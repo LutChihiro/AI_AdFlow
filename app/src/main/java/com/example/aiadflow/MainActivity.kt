@@ -245,17 +245,25 @@ private fun AdFeedScreen(
     onOpenDetail: (AdItem) -> Unit,
     onInfo: () -> Unit
 ) {
-    val shouldLoadMore by remember {
+    val shouldLoadMore by remember(ads.size, totalCount) {
         derivedStateOf {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            // 当最后一个可见 item 已经到达当前广告列表尾部时，触发下一批加载。
-            ads.isNotEmpty() && lastVisible >= ads.lastIndex
+
+            /*
+             * LazyColumn 的下标不是广告列表下标：
+             * 0 是列表头，1..ads.size 才是广告卡片，最后还会有一个底部状态 item。
+             * 因此需要用 ads.size 作为“最后一条广告在 LazyColumn 中的下标”，
+             * 避免用 ads.lastIndex 导致刚进入列表就提前加载下一页。
+             */
+            ads.isNotEmpty() &&
+                ads.size < totalCount &&
+                lastVisible >= ads.size
         }
     }
 
-    // 将滚动状态转换成一次性的副作用，避免在组合阶段直接修改 visibleCount。
+    // 将滚动状态转换成一次性的副作用；ads.size 变化后才允许继续触发下一批加载。
     LaunchedEffect(shouldLoadMore, ads.size, totalCount) {
-        if (shouldLoadMore && ads.size < totalCount) {
+        if (shouldLoadMore) {
             onLoadMore()
         }
     }
