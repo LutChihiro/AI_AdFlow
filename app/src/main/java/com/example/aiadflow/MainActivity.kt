@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -40,7 +39,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -63,10 +61,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -86,7 +87,31 @@ private val ChannelTabs = listOf(
 
 // 页面统一背景渐变，列表页和详情页共用，保证切换详情时视觉连续。
 private val PageBackground = Brush.verticalGradient(
-    listOf(Color(0xFFEAF4FF), Color(0xFFF8FBFF), Color(0xFFFFFFFF))
+    listOf(Color(0xFFDDEEFF), Color(0xFFF5F9FF), Color(0xFFFCFDFF))
+)
+
+private val TextPrimary = Color(0xFF172033)
+private val TextSecondary = Color(0xFF667085)
+private val TextTertiary = Color(0xFF7F8A9A)
+private val SoftShadow = Color(0x164C6FFF)
+private val CardShadow = Color(0x120B1B3A)
+private val PrimaryPurple = Color(0xFF6574FF)
+private val MutedBlue = Color(0xFFECF4FF)
+private val SelectedTabGradient = Brush.horizontalGradient(
+    listOf(Color(0xFFCBEAFF), Color(0xFFE3DAFF))
+)
+private val ImageGradient = Brush.linearGradient(
+    listOf(Color(0xFF8FD8FF), Color(0xFFC8BAFF), Color(0xFFFFCDE2))
+)
+private val ActiveActionGradient = Brush.horizontalGradient(
+    listOf(Color(0xFF6574FF), Color(0xFF8D6CFF))
+)
+private val TagPalette = listOf(
+    Color(0xFFEAF4FF) to Color(0xFF4D78A8),
+    Color(0xFFF0ECFF) to Color(0xFF7258B8),
+    Color(0xFFEAF8F1) to Color(0xFF3E8465),
+    Color(0xFFFFF4E4) to Color(0xFF9A6B2F),
+    Color(0xFFFFEEF3) to Color(0xFFA94D68)
 )
 
 class MainActivity : ComponentActivity() {
@@ -279,31 +304,32 @@ private fun AdFeedScreen(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
                 // 列表头包含固定操作区，但仍作为 LazyColumn 的 item 参与滚动和边距计算。
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 18.dp)
+                        .padding(horizontal = 16.dp)
                 ) {
                     Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-                    Spacer(Modifier.height(10.dp))
-                    TopBar(onInfo = onInfo, onRefresh = onRefresh)
-                    Spacer(Modifier.height(18.dp))
+                    Spacer(Modifier.height(14.dp))
+                    HeaderBar(onInfo = onInfo, onRefresh = onRefresh)
+                    Spacer(Modifier.height(20.dp))
                     ChannelTabs(
                         selectedChannel = selectedChannel,
                         onChannelChange = onChannelChange
                     )
-                    Spacer(Modifier.height(14.dp))
-                    SearchBar(
+                    Spacer(Modifier.height(16.dp))
+                    SearchSection(
                         value = searchDraft,
                         onValueChange = onSearchDraftChange,
                         onSearch = onSearchCommit
                     )
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(12.dp))
                     FilterStatus(committedQuery)
+                    Spacer(Modifier.height(2.dp))
                 }
             }
             if (ads.isEmpty()) {
@@ -318,7 +344,7 @@ private fun AdFeedScreen(
                         onToggleLiked = { onToggleLiked(ad) },
                         onToggleCollected = { onToggleCollected(ad) },
                         onShare = onShare,
-                        modifier = Modifier.padding(horizontal = 18.dp)
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }
                 item {
@@ -338,7 +364,7 @@ private fun AdFeedScreen(
 }
 
 @Composable
-private fun TopBar(onInfo: () -> Unit, onRefresh: () -> Unit) {
+private fun HeaderBar(onInfo: () -> Unit, onRefresh: () -> Unit) {
     // 顶部栏只负责触发页面级动作，具体 Toast 和刷新逻辑由父组件注入。
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -346,14 +372,14 @@ private fun TopBar(onInfo: () -> Unit, onRefresh: () -> Unit) {
     ) {
         Text(
             text = "AI广告信息流",
-            color = Color(0xFF172033),
-            fontSize = 25.sp,
+            color = TextPrimary,
+            fontSize = 24.sp,
             fontWeight = FontWeight.Bold
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(10.dp))
         Spacer(Modifier.weight(1f))
         CircleIconButton(text = "i", onClick = onInfo)
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(10.dp))
         CircleIconButton(text = "↻", onClick = onRefresh)
     }
 }
@@ -362,39 +388,42 @@ private fun TopBar(onInfo: () -> Unit, onRefresh: () -> Unit) {
 private fun CircleIconButton(text: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(40.dp)
-            .shadow(8.dp, CircleShape, spotColor = Color(0x1A4C6FFF))
+            .size(44.dp)
+            .shadow(10.dp, CircleShape, spotColor = SoftShadow)
             .clip(CircleShape)
             .background(Color.White)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = Color(0xFF516079), fontWeight = FontWeight.Bold)
+        Text(text = text, color = Color(0xFF516079), fontSize = 16.sp, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
 private fun ChannelTabs(selectedChannel: String, onChannelChange: (String) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         ChannelTabs.forEach { tab ->
             val selected = tab.id == selectedChannel
-            // 选中态和未选中态都使用渐变，保持控件样式统一，只通过颜色区分层级。
-            val background = if (selected) {
-                Brush.horizontalGradient(listOf(Color(0xFFC9E8FF), Color(0xFFE0D7FF)))
-            } else {
-                Brush.horizontalGradient(listOf(Color(0xFFF8FAFD), Color(0xFFF1F4F8)))
-            }
+            // 选中态使用蓝紫渐变和轻阴影，未选中态保持白底，让频道切换状态更明确。
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(background)
+                    .weight(1f)
+                    .height(46.dp)
+                    .shadow(if (selected) 8.dp else 2.dp, RoundedCornerShape(24.dp), spotColor = SoftShadow)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(if (selected) SelectedTabGradient else Brush.horizontalGradient(listOf(Color.White, Color(0xFFF8FAFD))))
                     .clickable { onChannelChange(tab.id) }
-                    .padding(horizontal = 22.dp, vertical = 10.dp)
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = tab.title,
-                    color = if (selected) Color(0xFF24375E) else Color(0xFF586274),
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                    color = if (selected) Color(0xFF24375E) else Color(0xFF647085),
+                    fontSize = 15.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold
                 )
             }
         }
@@ -402,19 +431,20 @@ private fun ChannelTabs(selectedChannel: String, onChannelChange: (String) -> Un
 }
 
 @Composable
-private fun SearchBar(value: String, onValueChange: (String) -> Unit, onSearch: () -> Unit) {
+private fun SearchSection(value: String, onValueChange: (String) -> Unit, onSearch: () -> Unit) {
     // 输入值由父组件持有，点击按钮或键盘 Search 才会提交到 committedQuery。
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(8.dp, RoundedCornerShape(22.dp), spotColor = Color(0x12000000))
+            .height(60.dp)
+            .shadow(12.dp, RoundedCornerShape(22.dp), spotColor = CardShadow)
             .clip(RoundedCornerShape(22.dp))
             .background(Color.White)
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp)
     ) {
-        Text(text = "⌕", color = Color(0xFF708096), fontSize = 20.sp)
-        Spacer(Modifier.width(8.dp))
+        Text(text = "⌕", color = Color(0xFF7A8CA4), fontSize = 21.sp)
+        Spacer(Modifier.width(10.dp))
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -438,8 +468,11 @@ private fun SearchBar(value: String, onValueChange: (String) -> Unit, onSearch: 
         )
         TextButton(
             onClick = onSearch,
-            colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF6172FF)),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+            colors = ButtonDefaults.textButtonColors(contentColor = PrimaryPurple),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color(0xFFF0ECFF))
         ) {
             Text("点击", fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
@@ -450,7 +483,7 @@ private fun SearchBar(value: String, onValueChange: (String) -> Unit, onSearch: 
 private fun FilterStatus(query: String) {
     Text(
         text = "当前筛选：${query.ifBlank { "无" }}",
-        color = Color(0xFF6B7484),
+        color = TextTertiary,
         fontSize = 13.sp,
         modifier = Modifier.padding(start = 2.dp)
     )
@@ -461,7 +494,7 @@ private fun EmptyState() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp)
+            .padding(horizontal = 16.dp)
             .height(160.dp)
             .clip(RoundedCornerShape(24.dp))
             .background(Color.White),
@@ -485,10 +518,11 @@ private fun AdCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .shadow(14.dp, RoundedCornerShape(28.dp), spotColor = CardShadow)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         when (ad.adType) {
             "smallImage" -> SmallImageAd(ad, onToggleLiked, onToggleCollected, onShare)
@@ -507,21 +541,24 @@ private fun SmallImageAd(
     onShare: () -> Unit
 ) {
     // 小图布局突出文字内容，图片作为右侧辅助信息，适合列表中较短的推广素材。
-    Column(Modifier.padding(16.dp)) {
+    Column(Modifier.padding(18.dp)) {
         CardHeader(ad)
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             AdTextContent(ad, modifier = Modifier.weight(1f), titleMaxLines = 2, summaryMaxLines = 3)
-            ImagePlaceholder(
+            AdImageBox(
                 imageType = ad.imageType,
                 isVideo = false,
+                cornerRadius = 20.dp,
                 modifier = Modifier
-                    .width(116.dp)
-                    .height(104.dp)
+                    .width(124.dp)
+                    .height(112.dp)
             )
         }
-        Spacer(Modifier.height(12.dp))
-        TagsAndActions(ad, onToggleLiked, onToggleCollected, onShare)
+        Spacer(Modifier.height(16.dp))
+        TagRow(ad.tags)
+        Spacer(Modifier.height(14.dp))
+        ActionRow(ad, onToggleLiked, onToggleCollected, onShare)
     }
 }
 
@@ -533,21 +570,24 @@ private fun ImageTextAd(
     onShare: () -> Unit
 ) {
     // 图文布局把图片放在左侧，适合商品或门店类广告先展示视觉元素。
-    Column(Modifier.padding(16.dp)) {
+    Column(Modifier.padding(18.dp)) {
         CardHeader(ad)
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ImagePlaceholder(
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            AdImageBox(
                 imageType = ad.imageType,
                 isVideo = false,
+                cornerRadius = 22.dp,
                 modifier = Modifier
-                    .width(124.dp)
+                    .width(132.dp)
                     .height(132.dp)
             )
             AdTextContent(ad, modifier = Modifier.weight(1f), titleMaxLines = 2, summaryMaxLines = 3)
         }
-        Spacer(Modifier.height(12.dp))
-        TagsAndActions(ad, onToggleLiked, onToggleCollected, onShare)
+        Spacer(Modifier.height(16.dp))
+        TagRow(ad.tags)
+        Spacer(Modifier.height(14.dp))
+        ActionRow(ad, onToggleLiked, onToggleCollected, onShare)
     }
 }
 
@@ -560,20 +600,23 @@ private fun LargeAd(
     isVideo: Boolean
 ) {
     // 大图和视频共用主视觉布局，通过 isVideo 控制是否叠加播放入口。
-    Column(Modifier.padding(16.dp)) {
+    Column(Modifier.padding(18.dp)) {
         CardHeader(ad)
-        Spacer(Modifier.height(10.dp))
-        AdTextContent(ad, titleMaxLines = 2, summaryMaxLines = 2)
         Spacer(Modifier.height(12.dp))
-        ImagePlaceholder(
+        AdTextContent(ad, titleMaxLines = 2, summaryMaxLines = 3)
+        Spacer(Modifier.height(14.dp))
+        AdImageBox(
             imageType = ad.imageType,
             isVideo = isVideo,
+            cornerRadius = 22.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1.9f)
         )
-        Spacer(Modifier.height(12.dp))
-        TagsAndActions(ad, onToggleLiked, onToggleCollected, onShare)
+        Spacer(Modifier.height(16.dp))
+        TagRow(ad.tags)
+        Spacer(Modifier.height(14.dp))
+        ActionRow(ad, onToggleLiked, onToggleCollected, onShare)
     }
 }
 
@@ -588,9 +631,9 @@ private fun CardHeader(ad: AdItem) {
             modifier = Modifier
                 .clip(RoundedCornerShape(999.dp))
                 .background(Color(0xFFE8F7EF))
-                .padding(horizontal = 9.dp, vertical = 4.dp)
+                .padding(horizontal = 11.dp, vertical = 6.dp)
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(9.dp))
         Text(
             text = ad.brandName,
             color = Color(0xFF536071),
@@ -610,7 +653,7 @@ private fun AdTextContent(
     Column(modifier) {
         Text(
             text = ad.title,
-            color = Color(0xFF172033),
+            color = TextPrimary,
             fontSize = 18.sp,
             lineHeight = 23.sp,
             fontWeight = FontWeight.Bold,
@@ -619,8 +662,13 @@ private fun AdTextContent(
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "AI 摘要：${ad.summary}",
-            color = Color(0xFF697385),
+            text = buildAnnotatedString {
+                withStyle(SpanStyle(color = Color(0xFF4F5D73), fontWeight = FontWeight.SemiBold)) {
+                    append("AI 摘要：")
+                }
+                append(ad.summary)
+            },
+            color = TextSecondary,
             fontSize = 14.sp,
             lineHeight = 20.sp,
             maxLines = summaryMaxLines,
@@ -630,16 +678,17 @@ private fun AdTextContent(
 }
 
 @Composable
-private fun ImagePlaceholder(imageType: String, isVideo: Boolean, modifier: Modifier = Modifier) {
+private fun AdImageBox(
+    imageType: String,
+    isVideo: Boolean,
+    modifier: Modifier = Modifier,
+    cornerRadius: androidx.compose.ui.unit.Dp = 22.dp
+) {
     // 当前 Demo 没有真实图片资源，使用渐变占位块模拟素材区域，并保留类型标签。
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(Color(0xFFBFE7FF), Color(0xFFDCD5FF), Color(0xFFFFEDF7))
-                )
-            )
+            .clip(RoundedCornerShape(cornerRadius))
+            .background(ImageGradient)
     ) {
         Text(
             text = imageType,
@@ -650,19 +699,19 @@ private fun ImagePlaceholder(imageType: String, isVideo: Boolean, modifier: Modi
                 .align(Alignment.TopStart)
                 .padding(10.dp)
                 .clip(RoundedCornerShape(999.dp))
-                .background(Color(0x66000000))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .background(Color(0x66354A63))
+                .padding(horizontal = 9.dp, vertical = 5.dp)
         )
         if (isVideo) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(52.dp)
+                    .size(54.dp)
                     .clip(CircleShape)
-                    .background(Color(0x88FFFFFF)),
+                    .background(Color(0xCCFFFFFF)),
                 contentAlignment = Alignment.Center
             ) {
-                Text("▶", color = Color(0xFF6172FF), fontSize = 24.sp)
+                Text("▶", color = PrimaryPurple, fontSize = 24.sp)
             }
         }
     }
@@ -670,56 +719,68 @@ private fun ImagePlaceholder(imageType: String, isVideo: Boolean, modifier: Modi
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TagsAndActions(
+private fun TagRow(tags: List<String>) {
+    // FlowRow 允许标签在窄屏自动换行，避免固定 Row 造成文本截断或按钮挤压。
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        tags.forEachIndexed { index, tag ->
+            val (background, content) = TagPalette[index % TagPalette.size]
+            Text(
+                text = tag,
+                color = content,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(background)
+                    .padding(horizontal = 10.dp, vertical = 7.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActionRow(
     ad: AdItem,
     onToggleLiked: () -> Unit,
     onToggleCollected: () -> Unit,
     onShare: () -> Unit
 ) {
-    // FlowRow 允许标签在窄屏自动换行，避免固定 Row 造成文本截断或按钮挤压。
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ad.tags.forEach { tag ->
-            Text(
-                text = tag,
-                color = Color(0xFF60708A),
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(Color(0xFFF2F6FB))
-                    .padding(horizontal = 9.dp, vertical = 5.dp)
-            )
-        }
-    }
-    Spacer(Modifier.height(12.dp))
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Text(
             text = "AI 标签 · 摘要已生成",
             color = Color(0xFF98A1B0),
             fontSize = 12.sp,
             modifier = Modifier.weight(1f)
         )
-        ActionButton("赞", ad.liked, onToggleLiked)
-        ActionButton("藏", ad.collected, onToggleCollected)
-        ActionButton("转", false, onShare)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ActionButton("赞", ad.liked, onToggleLiked)
+            ActionButton("藏", ad.collected, onToggleCollected)
+            ActionButton("转", false, onShare)
+        }
     }
 }
 
 @Composable
 private fun ActionButton(text: String, active: Boolean, onClick: () -> Unit) {
-    Text(
-        text = text,
-        color = if (active) Color.White else Color(0xFF687386),
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
+    Box(
         modifier = Modifier
-            .padding(start = 6.dp)
+            .size(38.dp)
             .clip(RoundedCornerShape(999.dp))
-            .background(
-                if (active) Color(0xFF6574FF) else Color(0xFFF4F7FB)
-            )
+            .background(if (active) ActiveActionGradient else Brush.horizontalGradient(listOf(Color(0xFFF4F7FB), Color(0xFFF8FAFD))))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp)
-    )
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = if (active) Color.White else Color(0xFF687386),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -756,9 +817,10 @@ private fun AdDetailScreen(
                 }
             }
             Spacer(Modifier.height(18.dp))
-            ImagePlaceholder(
+            AdImageBox(
                 imageType = ad.imageType,
                 isVideo = ad.adType == "video",
+                cornerRadius = 24.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(220.dp)
@@ -774,28 +836,18 @@ private fun AdDetailScreen(
                     CardHeader(ad)
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        text = "AI 摘要：${ad.summary}",
-                        color = Color(0xFF4F5D73),
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(color = Color(0xFF4F5D73), fontWeight = FontWeight.SemiBold)) {
+                                append("AI 摘要：")
+                            }
+                            append(ad.summary)
+                        },
+                        color = TextSecondary,
                         fontSize = 16.sp,
                         lineHeight = 24.sp
                     )
                     Spacer(Modifier.height(16.dp))
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ad.tags.forEach { tag ->
-                            Text(
-                                text = tag,
-                                color = Color(0xFF60708A),
-                                fontSize = 13.sp,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(999.dp))
-                                    .background(Color(0xFFF2F6FB))
-                                    .padding(horizontal = 11.dp, vertical = 7.dp)
-                            )
-                        }
-                    }
+                    TagRow(ad.tags)
                     Spacer(Modifier.height(18.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         DetailActionButton("赞", ad.liked, onToggleLiked, Modifier.weight(1f))
