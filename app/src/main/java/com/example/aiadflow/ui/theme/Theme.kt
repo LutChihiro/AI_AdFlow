@@ -31,6 +31,11 @@ object AppSpacing {
     val TabHeight = 44.dp
     val SearchHeight = 56.dp
     val AdMediaHeight = 168.dp
+    val CompactMediaHeight = 124.dp
+    val PlayButton = 56.dp
+    val TagVertical = 6.dp
+    val ActionHeight = 36.dp
+    val EmptyHeight = 160.dp
 }
 
 @Composable
