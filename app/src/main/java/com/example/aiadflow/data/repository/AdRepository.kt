@@ -26,13 +26,13 @@ class AdRepository(
      * 搜索词会匹配品牌名、标题、摘要和标签。
      */
     fun getAds(
-        channel: Channel,
+        channel: Channel? = null,
         query: String = ""
     ): List<AdItem> {
         val normalizedQuery = query.trim()
 
         return adProvider.ads()
-            .filter { it.channel == channel }
+            .filter { channel == null || it.channel == channel }
             .filter { ad ->
                 normalizedQuery.isEmpty() ||
                     ad.brandName.contains(normalizedQuery, ignoreCase = true) ||

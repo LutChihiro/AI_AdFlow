@@ -19,7 +19,7 @@ data class AdFeedUiState(
     /** 当前可展示的频道列表。 */
     val channels: List<Channel> = emptyList(),
     /** 当前选中的频道。 */
-    val selectedChannel: Channel = Channel.Featured,
+    val selectedChannel: Channel? = null,
     /** 搜索框文本。 */
     val searchText: String = "",
     /** 根据频道和搜索词过滤后的广告列表。 */
@@ -41,14 +41,14 @@ class AdFeedViewModel(
     private val _uiState = MutableStateFlow(
         AdFeedUiState(
             channels = repository.getChannels(),
-            ads = repository.getAds(Channel.Featured)
+            ads = repository.getAds()
         )
     )
     /** 暴露给 UI 的只读状态流。 */
     val uiState: StateFlow<AdFeedUiState> = _uiState.asStateFlow()
 
     /** 切换频道，并按当前搜索词刷新广告列表。 */
-    fun selectChannel(channel: Channel) {
+    fun selectChannel(channel: Channel?) {
         _uiState.update { current ->
             current.copy(
                 selectedChannel = channel,
@@ -60,7 +60,10 @@ class AdFeedViewModel(
     /** 更新搜索框文本。 */
     fun updateSearchText(text: String) {
         _uiState.update { current ->
-            current.copy(searchText = text)
+            current.copy(
+                searchText = text,
+                ads = repository.getAds(current.selectedChannel, text)
+            )
         }
     }
 
