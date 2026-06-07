@@ -40,7 +40,10 @@ class AdFeedViewModel(
 
     fun updateSearchText(text: String) {
         _uiState.update { current ->
-            current.copy(searchText = text)
+            current.copy(
+                searchText = text,
+                ads = repository.getAds(current.selectedChannel, text)
+            )
         }
     }
 
