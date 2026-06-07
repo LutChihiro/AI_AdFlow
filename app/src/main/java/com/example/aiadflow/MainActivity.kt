@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -31,7 +32,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,13 +59,25 @@ class MainActivity : ComponentActivity() {
             AIAdFlowTheme {
                 val viewModel = remember { AdFeedViewModel() }
                 val uiState by viewModel.uiState.collectAsState()
+                var selectedAd by remember { mutableStateOf<AdItem?>(null) }
 
-                HomeScreen(
-                    uiState = uiState,
-                    onChannelSelected = viewModel::selectChannel,
-                    onSearchChange = viewModel::updateSearchText,
-                    onAdClick = viewModel::trackAdClick
-                )
+                val ad = selectedAd
+                if (ad != null) {
+                    AdDetailScreen(
+                        ad = ad,
+                        onBackClick = { selectedAd = null }
+                    )
+                } else {
+                    HomeScreen(
+                        uiState = uiState,
+                        onChannelSelected = viewModel::selectChannel,
+                        onSearchChange = viewModel::updateSearchText,
+                        onAdClick = { clickedAd ->
+                            viewModel.trackAdClick(clickedAd)
+                            selectedAd = clickedAd
+                        }
+                    )
+                }
             }
         }
     }
@@ -132,6 +147,159 @@ private fun HomeScreen(
                         }
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdDetailScreen(
+    ad: AdItem,
+    onBackClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = AppColors.PageBackground
+    ) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = AppSpacing.PageHorizontal),
+            contentPadding = PaddingValues(bottom = AppSpacing.Section),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)
+        ) {
+            item {
+                Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+            }
+            item {
+                DetailTopBar(onBackClick = onBackClick)
+            }
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(AppSpacing.AdMediaHeight)
+                        .clip(AppRadius.Large)
+                        .background(mediaColorFor(ad.type))
+                        .padding(AppSpacing.Medium)
+                ) {
+                    Text(
+                        text = ad.mediaLabel,
+                        color = AppColors.OnPrimary,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Text(
+                        text = channelLabelFor(ad.channel),
+                        modifier = Modifier.align(Alignment.BottomStart),
+                        color = AppColors.OnPrimary,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
+            item {
+                DetailField(
+                    label = "\u54c1\u724c\u540d",
+                    value = ad.brandName
+                )
+            }
+            item {
+                DetailField(
+                    label = "\u6807\u9898",
+                    value = ad.title
+                )
+            }
+            item {
+                DetailField(
+                    label = "\u0041\u0049 \u6458\u8981",
+                    value = ad.summary
+                )
+            }
+            item {
+                DetailTags(tags = ad.tags)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailTopBar(onBackClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(AppSpacing.HeaderHeight),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Medium)
+    ) {
+        ActionChip(
+            text = "\u8fd4\u56de",
+            selected = false,
+            onClick = onBackClick
+        )
+        Text(
+            text = "\u5e7f\u544a\u8be6\u60c5",
+            color = AppColors.TextPrimary,
+            style = MaterialTheme.typography.headlineMedium
+        )
+    }
+}
+
+@Composable
+private fun DetailField(
+    label: String,
+    value: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(AppRadius.Large)
+            .background(AppColors.Surface)
+            .padding(AppSpacing.Medium),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+    ) {
+        Text(
+            text = label,
+            color = AppColors.Primary,
+            style = MaterialTheme.typography.labelLarge
+        )
+        Text(
+            text = value,
+            color = AppColors.TextPrimary,
+            style = MaterialTheme.typography.titleMedium
+        )
+    }
+}
+
+@Composable
+private fun DetailTags(tags: List<String>) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(AppRadius.Large)
+            .background(AppColors.Surface)
+            .padding(AppSpacing.Medium),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+    ) {
+        Text(
+            text = "\u5e7f\u544a\u6807\u7b7e",
+            color = AppColors.Primary,
+            style = MaterialTheme.typography.labelLarge
+        )
+        tags.forEach { tag ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(AppRadius.Full)
+                    .background(AppColors.PageBackground)
+                    .padding(
+                        horizontal = AppSpacing.Medium,
+                        vertical = AppSpacing.TagVertical
+                    )
+            ) {
+                Text(
+                    text = "#$tag",
+                    color = AppColors.TextSecondary,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
+                )
             }
         }
     }
@@ -274,6 +442,41 @@ private fun AdCard(
             .padding(AppSpacing.Medium),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
     ) {
+        if (ad.type == AdType.SmallImage) {
+            SmallImageAdContent(ad = ad)
+        } else {
+            StandardAdContent(ad = ad)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+        ) {
+            ActionChip(
+                text = if (liked) "\u5df2\u70b9\u8d5e" else "\u70b9\u8d5e",
+                selected = liked,
+                onClick = onLikeClick
+            )
+            ActionChip(
+                text = if (collected) "\u5df2\u6536\u85cf" else "\u6536\u85cf",
+                selected = collected,
+                onClick = onCollectClick
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            ActionChip(
+                text = "\u67e5\u770b",
+                selected = true,
+                onClick = onViewClick
+            )
+        }
+    }
+}
+
+@Composable
+private fun StandardAdContent(ad: AdItem) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -332,26 +535,61 @@ private fun AdCard(
             style = MaterialTheme.typography.bodyMedium
         )
         TagRow(tags = ad.tags)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+    }
+}
+
+@Composable
+private fun SmallImageAdContent(ad: AdItem) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Medium),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier = Modifier
+                .width(AppSpacing.SmallImageMediaWidth)
+                .height(AppSpacing.CompactMediaHeight)
+                .clip(AppRadius.Medium)
+                .background(mediaColorFor(ad.type))
+                .padding(AppSpacing.Small)
         ) {
-            ActionChip(
-                text = if (liked) "\u5df2\u70b9\u8d5e" else "\u70b9\u8d5e",
-                selected = liked,
-                onClick = onLikeClick
+            Text(
+                text = ad.mediaLabel,
+                color = AppColors.OnPrimary,
+                style = MaterialTheme.typography.labelLarge
             )
-            ActionChip(
-                text = if (collected) "\u5df2\u6536\u85cf" else "\u6536\u85cf",
-                selected = collected,
-                onClick = onCollectClick
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = ad.brandName,
+                    modifier = Modifier.weight(1f),
+                    color = AppColors.TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = channelLabelFor(ad.channel),
+                    color = AppColors.Primary,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+            Text(
+                text = ad.title,
+                color = AppColors.TextPrimary,
+                style = MaterialTheme.typography.titleMedium
             )
-            Spacer(modifier = Modifier.weight(1f))
-            ActionChip(
-                text = "\u67e5\u770b",
-                selected = true,
-                onClick = onViewClick
+            Text(
+                text = ad.summary,
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
             )
+            TagRow(tags = ad.tags)
         }
     }
 }
@@ -443,7 +681,7 @@ private fun HomeScreenPreview() {
         HomeScreen(
             uiState = AdFeedUiState(
                 channels = Channel.entries,
-                ads = emptyList()
+                ads = listOf(PreviewAd)
             ),
             onChannelSelected = {},
             onSearchChange = {},
@@ -451,3 +689,25 @@ private fun HomeScreenPreview() {
         )
     }
 }
+
+@Preview(showBackground = true)
+@Composable
+private fun AdDetailScreenPreview() {
+    AIAdFlowTheme {
+        AdDetailScreen(
+            ad = PreviewAd,
+            onBackClick = {}
+        )
+    }
+}
+
+private val PreviewAd = AdItem(
+    id = 100,
+    channel = Channel.Featured,
+    type = AdType.SmallImage,
+    brandName = "\u9752\u96c0\u652f\u4ed8",
+    title = "\u8fd4\u73b0\u6743\u76ca\u5f00\u901a\u6545\u4e8b",
+    summary = "\u0041\u0049 \u6458\u8981\uff1a\u4e09\u6bb5\u5f0f\u5361\u7247\u5148\u89e3\u91ca\u65e5\u5e38\u7701\u94b1\u573a\u666f\uff0c\u518d\u5f15\u5bfc\u7528\u6237\u6bd4\u8f83\u4e0d\u540c\u8fd4\u73b0\u7b49\u7ea7\u3002",
+    mediaLabel = "\u54c1\u724c\u89c6\u89c9",
+    tags = listOf("\u91d1\u878d", "\u8fd4\u73b0", "\u5f00\u901a", "\u6743\u76ca")
+)
