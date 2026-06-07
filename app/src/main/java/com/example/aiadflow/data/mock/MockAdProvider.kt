@@ -4,9 +4,16 @@ import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.AdType
 import com.example.aiadflow.data.model.Channel
 
+/**
+ * 本地 mock 广告数据源。
+ *
+ * 在没有真实接口前，为仓库层提供频道和广告列表，保证 UI 可以独立开发。
+ */
 object MockAdProvider {
+    /** 返回当前支持的全部广告频道。 */
     fun channels(): List<Channel> = Channel.entries
 
+    /** 返回用于信息流展示的 mock 广告列表。 */
     fun ads(): List<AdItem> = listOf(
         AdItem(
             id = 1,
