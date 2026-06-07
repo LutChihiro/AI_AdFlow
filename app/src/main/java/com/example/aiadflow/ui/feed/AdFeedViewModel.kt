@@ -10,26 +10,45 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
+/**
+ * 广告信息流页面的 UI 状态。
+ *
+ * ViewModel 通过 StateFlow 暴露该状态，Compose 页面可以订阅并渲染。
+ */
 data class AdFeedUiState(
+    /** 当前可展示的频道列表。 */
     val channels: List<Channel> = emptyList(),
-    val selectedChannel: Channel = Channel.Featured,
+    /** 当前选中的频道。 */
+    val selectedChannel: Channel? = null,
+    /** 搜索框文本。 */
     val searchText: String = "",
+    /** 根据频道和搜索词过滤后的广告列表。 */
     val ads: List<AdItem> = emptyList(),
+    /** 是否正在加载数据，预留给后续真实接口接入。 */
     val isLoading: Boolean = false
 )
 
+/**
+ * 广告信息流 ViewModel。
+ *
+ * 负责维护频道选择、搜索文本、广告列表刷新以及广告行为埋点。
+ */
 class AdFeedViewModel(
+    /** 广告仓库，默认使用本地 mock 数据实现。 */
     private val repository: AdRepository = AdRepository()
 ) : ViewModel() {
+    /** 可变内部状态，只允许 ViewModel 自己更新。 */
     private val _uiState = MutableStateFlow(
         AdFeedUiState(
             channels = repository.getChannels(),
-            ads = repository.getAds(Channel.Featured)
+            ads = repository.getAds()
         )
     )
+    /** 暴露给 UI 的只读状态流。 */
     val uiState: StateFlow<AdFeedUiState> = _uiState.asStateFlow()
 
-    fun selectChannel(channel: Channel) {
+    /** 切换频道，并按当前搜索词刷新广告列表。 */
+    fun selectChannel(channel: Channel?) {
         _uiState.update { current ->
             current.copy(
                 selectedChannel = channel,
@@ -38,6 +57,7 @@ class AdFeedViewModel(
         }
     }
 
+    /** 更新搜索框文本。 */
     fun updateSearchText(text: String) {
         _uiState.update { current ->
             current.copy(
@@ -47,6 +67,7 @@ class AdFeedViewModel(
         }
     }
 
+    /** 使用当前频道和搜索词重新拉取广告列表。 */
     fun refreshAds() {
         _uiState.update { current ->
             current.copy(
@@ -55,14 +76,17 @@ class AdFeedViewModel(
         }
     }
 
+    /** 记录广告曝光事件。 */
     fun trackAdImpression(ad: AdItem) {
         track(ad, "impression")
     }
 
+    /** 记录广告点击事件。 */
     fun trackAdClick(ad: AdItem) {
         track(ad, "click")
     }
 
+    /** 统一封装埋点事件创建逻辑，避免曝光和点击重复组装 TrackEvent。 */
     private fun track(ad: AdItem, eventName: String) {
         repository.track(
             TrackEvent(
