@@ -4,50 +4,64 @@ import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.AdType
 import com.example.aiadflow.data.model.Channel
 
-/**
- * 本地 mock 广告数据源。
- *
- * 在没有真实接口前，为仓库层提供频道和广告列表，保证 UI 可以独立开发。
- */
 object MockAdProvider {
-    /** 返回当前支持的全部广告频道。 */
     fun channels(): List<Channel> = Channel.entries
 
-    /** 返回用于信息流展示的 mock 广告列表。 */
     fun ads(): List<AdItem> = listOf(
         AdItem(
             id = 1,
             channel = Channel.Featured,
-            type = AdType.SmallImage,
-            brandName = "Nova Audio",
-            title = "Noise cancelling earbuds for study and commute",
-            summary = "Balanced sound, long battery life, and a compact case for daily use.",
-            mediaLabel = "Small image",
-            tags = listOf("Digital", "Student", "Budget")
+            type = AdType.LargeImage,
+            brandName = "Northline Gear",
+            title = "Lightweight commuter backpack",
+            summary = "AI predicts strong purchase intent for waterproof laptop bags among weekday commuters.",
+            mediaLabel = "Product hero",
+            tags = listOf("Backpack", "Commute", "Waterproof"),
+            collected = true
         ),
         AdItem(
             id = 2,
             channel = Channel.Featured,
             type = AdType.Video,
             brandName = "RunLab",
-            title = "City running starter kit",
-            summary = "Light shoes and breathable basics for short morning runs.",
-            mediaLabel = "Video",
-            tags = listOf("Sports", "Commute", "Lifestyle"),
-            collected = true
+            title = "Seven-day creator fitness challenge",
+            summary = "Short video creative highlights daily progress, shareable milestones, and a low-friction trial path.",
+            mediaLabel = "Video creative",
+            tags = listOf("Fitness", "Creator", "Trial")
         ),
         AdItem(
             id = 3,
+            channel = Channel.Featured,
+            type = AdType.ImageText,
+            brandName = "Bluebird Pay",
+            title = "Cashback benefits onboarding story",
+            summary = "A three-card sequence explains everyday savings before guiding users to compare cashback tiers.",
+            mediaLabel = "Brand visual",
+            tags = listOf("Finance", "Cashback", "Onboarding")
+        ),
+        AdItem(
+            id = 4,
+            channel = Channel.Featured,
+            type = AdType.SmallImage,
+            brandName = "Nova Audio",
+            title = "Noise cancelling earbuds for study",
+            summary = "Balanced sound, long battery life, and a compact case for daily use.",
+            mediaLabel = "Small image",
+            tags = listOf("Digital", "Student", "Budget"),
+            liked = true
+        ),
+        AdItem(
+            id = 5,
             channel = Channel.Ecommerce,
             type = AdType.LargeImage,
             brandName = "Orbit Phone",
             title = "Slim phone with strong night photos",
-            summary = "A daily phone focused on battery, portrait mode, and low-light details.",
+            summary = "A daily phone focused on battery, portrait mode, and low-light image details.",
             mediaLabel = "Large image",
             tags = listOf("Digital", "Deal", "Trend")
         ),
         AdItem(
-            id = 4,
+            id = 6,
             channel = Channel.Ecommerce,
             type = AdType.ImageText,
             brandName = "Simple Pack",
@@ -58,17 +72,38 @@ object MockAdProvider {
             liked = true
         ),
         AdItem(
-            id = 5,
+            id = 7,
+            channel = Channel.Ecommerce,
+            type = AdType.SmallImage,
+            brandName = "Warm Home",
+            title = "Smart aroma diffuser bundle",
+            summary = "Top-performing copy pairs nighttime relaxation with a limited-time bundle discount.",
+            mediaLabel = "Small image",
+            tags = listOf("Home", "Wellness", "Bundle"),
+            collected = true
+        ),
+        AdItem(
+            id = 8,
+            channel = Channel.Ecommerce,
+            type = AdType.Video,
+            brandName = "DeskLite",
+            title = "Adjustable desk lamp for focused work",
+            summary = "Video creative shows brightness modes, cable management, and compact desk setups.",
+            mediaLabel = "Video",
+            tags = listOf("Office", "Study", "Lighting")
+        ),
+        AdItem(
+            id = 9,
             channel = Channel.Local,
             type = AdType.ImageText,
             brandName = "Corner Bakery",
             title = "Evening bakery discount",
             summary = "Fresh bread and desserts with a local pickup offer after work.",
-            mediaLabel = "Image text",
+            mediaLabel = "Local offer",
             tags = listOf("Food", "Local", "Deal")
         ),
         AdItem(
-            id = 6,
+            id = 10,
             channel = Channel.Local,
             type = AdType.Video,
             brandName = "Blue Bridge Gym",
@@ -76,6 +111,27 @@ object MockAdProvider {
             summary = "A short AI-assisted movement check with beginner training suggestions.",
             mediaLabel = "Video",
             tags = listOf("Sports", "Local", "Health")
+        ),
+        AdItem(
+            id = 11,
+            channel = Channel.Local,
+            type = AdType.LargeImage,
+            brandName = "Street Cafe",
+            title = "Weekday lunch set near the office",
+            summary = "Promote a decision-time lunch bundle to users within three kilometers before noon.",
+            mediaLabel = "Nearby deal",
+            tags = listOf("Dining", "Nearby", "Lunch"),
+            liked = true
+        ),
+        AdItem(
+            id = 12,
+            channel = Channel.Local,
+            type = AdType.SmallImage,
+            brandName = "City Cleaners",
+            title = "Same-day shirt cleaning pickup",
+            summary = "Local service ads emphasize evening pickup, transparent pricing, and first-order savings.",
+            mediaLabel = "Service image",
+            tags = listOf("Service", "Local", "Pickup")
         )
     )
 }
