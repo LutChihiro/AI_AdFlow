@@ -28,21 +28,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import com.example.aiadflow.data.mock.MockAdProvider
 import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.AdType
 import com.example.aiadflow.data.model.Channel
+import com.example.aiadflow.ui.feed.AdFeedUiState
+import com.example.aiadflow.ui.feed.AdFeedViewModel
 import com.example.aiadflow.ui.theme.AIAdFlowTheme
 import com.example.aiadflow.ui.theme.AppColors
 import com.example.aiadflow.ui.theme.AppRadius
@@ -54,31 +54,29 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             AIAdFlowTheme {
-                HomeScreen()
+                val viewModel = remember { AdFeedViewModel() }
+                val uiState by viewModel.uiState.collectAsState()
+
+                HomeScreen(
+                    uiState = uiState,
+                    onChannelSelected = viewModel::selectChannel,
+                    onSearchChange = viewModel::updateSearchText,
+                    onAdClick = viewModel::trackAdClick
+                )
             }
         }
     }
 }
 
 @Composable
-private fun HomeScreen() {
-    var selectedChannel by remember { mutableStateOf(ChannelTabs.first().id) }
-    var searchQuery by remember { mutableStateOf("") }
+private fun HomeScreen(
+    uiState: AdFeedUiState,
+    onChannelSelected: (Channel?) -> Unit,
+    onSearchChange: (String) -> Unit,
+    onAdClick: (AdItem) -> Unit
+) {
     val likedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
     val collectedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
-    val visibleAds = remember(selectedChannel, searchQuery, likedOverrides.size, collectedOverrides.size) {
-        SampleAds.filter { ad ->
-            val matchesChannel = selectedChannel == "all" || ad.channel.id == selectedChannel
-            val query = searchQuery.trim()
-            val matchesSearch = query.isBlank() ||
-                ad.brandName.contains(query, ignoreCase = true) ||
-                ad.title.contains(query, ignoreCase = true) ||
-                ad.summary.contains(query, ignoreCase = true) ||
-                ad.tags.any { it.contains(query, ignoreCase = true) }
-
-            matchesChannel && matchesSearch
-        }
-    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -99,23 +97,24 @@ private fun HomeScreen() {
             }
             item {
                 ChannelTabs(
-                    selectedChannel = selectedChannel,
-                    onChannelSelected = { selectedChannel = it }
+                    channels = uiState.channels,
+                    selectedChannel = uiState.selectedChannel,
+                    onChannelSelected = onChannelSelected
                 )
             }
             item {
                 SearchBar(
-                    query = searchQuery,
-                    onQueryChange = { searchQuery = it }
+                    query = uiState.searchText,
+                    onQueryChange = onSearchChange
                 )
             }
-            if (visibleAds.isEmpty()) {
+            if (uiState.ads.isEmpty()) {
                 item {
                     EmptyFeed()
                 }
             } else {
                 items(
-                    items = visibleAds,
+                    items = uiState.ads,
                     key = { it.id }
                 ) { ad ->
                     AdCard(
@@ -127,6 +126,9 @@ private fun HomeScreen() {
                         },
                         onCollectClick = {
                             collectedOverrides[ad.id] = !(collectedOverrides[ad.id] ?: ad.collected)
+                        },
+                        onViewClick = {
+                            onAdClick(ad)
                         }
                     )
                 }
@@ -173,31 +175,51 @@ private fun HeaderBar() {
 
 @Composable
 private fun ChannelTabs(
-    selectedChannel: String,
-    onChannelSelected: (String) -> Unit
+    channels: List<Channel>,
+    selectedChannel: Channel?,
+    onChannelSelected: (Channel?) -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)
     ) {
-        ChannelTabs.forEach { tab ->
-            val selected = tab.id == selectedChannel
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(AppSpacing.TabHeight)
-                    .clip(AppRadius.Full)
-                    .background(if (selected) AppColors.Primary else AppColors.Surface)
-                    .clickable { onChannelSelected(tab.id) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = tab.label,
-                    color = if (selected) AppColors.OnPrimary else AppColors.TextSecondary,
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+        ChannelTabChip(
+            label = "\u5168\u90e8",
+            selected = selectedChannel == null,
+            modifier = Modifier.weight(1f),
+            onClick = { onChannelSelected(null) }
+        )
+        channels.forEach { channel ->
+            ChannelTabChip(
+                label = channelLabelFor(channel),
+                selected = selectedChannel == channel,
+                modifier = Modifier.weight(1f),
+                onClick = { onChannelSelected(channel) }
+            )
         }
+    }
+}
+
+@Composable
+private fun ChannelTabChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .height(AppSpacing.TabHeight)
+            .clip(AppRadius.Full)
+            .background(if (selected) AppColors.Primary else AppColors.Surface)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (selected) AppColors.OnPrimary else AppColors.TextSecondary,
+            style = MaterialTheme.typography.labelLarge
+        )
     }
 }
 
@@ -241,7 +263,8 @@ private fun AdCard(
     liked: Boolean,
     collected: Boolean,
     onLikeClick: () -> Unit,
-    onCollectClick: () -> Unit
+    onCollectClick: () -> Unit,
+    onViewClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -327,7 +350,7 @@ private fun AdCard(
             ActionChip(
                 text = "\u67e5\u770b",
                 selected = true,
-                onClick = {}
+                onClick = onViewClick
             )
         }
     }
@@ -407,27 +430,24 @@ private fun mediaColorFor(adType: AdType): Color = when (adType) {
     AdType.LargeImage -> Color(0xFF2563EB)
 }
 
-private fun channelLabelFor(channel: Channel): String =
-    ChannelTabs.firstOrNull { it.id == channel.id }?.label ?: channel.title
-
-private data class ChannelTab(
-    val id: String,
-    val label: String
-)
-
-private val ChannelTabs = listOf(
-    ChannelTab("all", "\u5168\u90e8"),
-    ChannelTab("featured", "\u63a8\u8350"),
-    ChannelTab("ecommerce", "\u7535\u5546"),
-    ChannelTab("local", "\u672c\u5730")
-)
-
-private val SampleAds = MockAdProvider.ads()
+private fun channelLabelFor(channel: Channel): String = when (channel) {
+    Channel.Featured -> "\u63a8\u8350"
+    Channel.Ecommerce -> "\u7535\u5546"
+    Channel.Local -> "\u672c\u5730"
+}
 
 @Preview(showBackground = true)
 @Composable
 private fun HomeScreenPreview() {
     AIAdFlowTheme {
-        HomeScreen()
+        HomeScreen(
+            uiState = AdFeedUiState(
+                channels = Channel.entries,
+                ads = emptyList()
+            ),
+            onChannelSelected = {},
+            onSearchChange = {},
+            onAdClick = {}
+        )
     }
 }

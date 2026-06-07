@@ -46,8 +46,16 @@ object AppSpacing {
     val SearchHeight = 56.dp
     /** 大图和视频广告的媒体区域高度。 */
     val AdMediaHeight = 168.dp
+    /** 视频广告封面区域高度。 */
+    val VideoMediaHeight = 196.dp
+    /** 大图广告的主视觉区域高度。 */
+    val LargeImageMediaHeight = 220.dp
     /** 小图和图文广告的媒体区域高度。 */
     val CompactMediaHeight = 124.dp
+    /** 图文广告的图片区域高度。 */
+    val ImageTextMediaHeight = 144.dp
+    /** 小图广告左侧缩略图宽度。 */
+    val SmallImageMediaWidth = 112.dp
     /** 视频播放入口尺寸。 */
     val PlayButton = 56.dp
     /** 标签 chip 的垂直内边距。 */
