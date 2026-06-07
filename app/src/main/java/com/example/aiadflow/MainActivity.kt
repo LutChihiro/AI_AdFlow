@@ -445,6 +445,7 @@ private fun AdCard(
         when (ad.type) {
             AdType.SmallImage -> SmallImageAdContent(ad = ad)
             AdType.LargeImage -> LargeImageAdContent(ad = ad)
+            AdType.ImageText -> ImageTextAdContent(ad = ad)
             else -> StandardAdContent(ad = ad)
         }
         Row(
@@ -467,6 +468,60 @@ private fun AdCard(
                 selected = true,
                 onClick = onViewClick
             )
+        }
+    }
+}
+
+@Composable
+private fun ImageTextAdContent(ad: AdItem) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(AppSpacing.ImageTextMediaHeight)
+                .clip(AppRadius.Medium)
+                .background(mediaColorFor(ad.type))
+                .padding(AppSpacing.Medium)
+        ) {
+            Text(
+                text = ad.mediaLabel,
+                color = AppColors.OnPrimary,
+                style = MaterialTheme.typography.labelLarge
+            )
+            Text(
+                text = channelLabelFor(ad.channel),
+                modifier = Modifier.align(Alignment.BottomEnd),
+                color = AppColors.OnPrimary,
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(AppRadius.Medium)
+                .background(AppColors.PageBackground)
+                .padding(AppSpacing.Medium),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+        ) {
+            Text(
+                text = ad.brandName,
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = ad.title,
+                color = AppColors.TextPrimary,
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = ad.summary,
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            TagRow(tags = ad.tags)
         }
     }
 }
@@ -753,7 +808,7 @@ private fun AdDetailScreenPreview() {
 private val PreviewAd = AdItem(
     id = 100,
     channel = Channel.Featured,
-    type = AdType.LargeImage,
+    type = AdType.ImageText,
     brandName = "\u9752\u96c0\u652f\u4ed8",
     title = "\u8fd4\u73b0\u6743\u76ca\u5f00\u901a\u6545\u4e8b",
     summary = "\u0041\u0049 \u6458\u8981\uff1a\u4e09\u6bb5\u5f0f\u5361\u7247\u5148\u89e3\u91ca\u65e5\u5e38\u7701\u94b1\u573a\u666f\uff0c\u518d\u5f15\u5bfc\u7528\u6237\u6bd4\u8f83\u4e0d\u540c\u8fd4\u73b0\u7b49\u7ea7\u3002",

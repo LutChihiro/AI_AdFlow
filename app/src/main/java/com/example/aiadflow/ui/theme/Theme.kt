@@ -50,6 +50,8 @@ object AppSpacing {
     val LargeImageMediaHeight = 220.dp
     /** 小图和图文广告的媒体区域高度。 */
     val CompactMediaHeight = 124.dp
+    /** 图文广告的图片区域高度。 */
+    val ImageTextMediaHeight = 144.dp
     /** 小图广告左侧缩略图宽度。 */
     val SmallImageMediaWidth = 112.dp
     /** 视频播放入口尺寸。 */
