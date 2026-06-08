@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.AdType
 import com.example.aiadflow.data.model.Channel
@@ -266,6 +268,8 @@ private fun AdCard(
     onCollectClick: () -> Unit,
     onViewClick: () -> Unit
 ) {
+    val mediaSpec = mediaSpecFor(ad.type)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -274,57 +278,137 @@ private fun AdCard(
             .padding(AppSpacing.Medium),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (ad.type == AdType.LargeImage || ad.type == AdType.Video) AppSpacing.AdMediaHeight else AppSpacing.CompactMediaHeight)
-                .clip(AppRadius.Medium)
-                .background(mediaColorFor(ad.type))
-                .padding(AppSpacing.Medium)
-        ) {
-            Text(
-                text = ad.mediaLabel,
-                color = AppColors.OnPrimary,
-                style = MaterialTheme.typography.labelLarge
-            )
-            if (ad.type == AdType.Video) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(AppSpacing.PlayButton)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.9f)),
-                    contentAlignment = Alignment.Center
+        when (ad.type) {
+            AdType.SmallImage -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Medium)
                 ) {
-                    Text(
-                        text = "\u64ad\u653e",
-                        color = AppColors.Primary,
-                        style = MaterialTheme.typography.labelLarge
+                    AdMediaBlock(
+                        ad = ad,
+                        mediaSpec = mediaSpec,
+                        modifier = Modifier
+                            .width(AppSpacing.SmallImageMediaWidth)
+                            .height(AppSpacing.CompactMediaHeight)
+                    )
+                    AdSummaryContent(
+                        ad = ad,
+                        modifier = Modifier.weight(1f),
+                        showChannelInline = true
                     )
                 }
             }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+            AdType.ImageText -> {
+                AdMediaBlock(
+                    ad = ad,
+                    mediaSpec = mediaSpec,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(mediaSpec.height)
+                )
+                AdSummaryContent(ad = ad)
+            }
+            AdType.Video -> {
+                AdSummaryHeader(ad = ad)
+                AdMediaBlock(
+                    ad = ad,
+                    mediaSpec = mediaSpec,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(mediaSpec.height)
+                )
                 Text(
-                    text = ad.brandName,
+                    text = ad.summary,
                     color = AppColors.TextSecondary,
                     style = MaterialTheme.typography.bodyMedium
                 )
+                TagRow(tags = ad.tags)
+            }
+            AdType.LargeImage -> {
+                AdMediaBlock(
+                    ad = ad,
+                    mediaSpec = mediaSpec,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(mediaSpec.height)
+                )
+                AdSummaryContent(ad = ad, titleFirst = true)
+            }
+        }
+        AdActionRow(
+            liked = liked,
+            collected = collected,
+            onLikeClick = onLikeClick,
+            onCollectClick = onCollectClick,
+            onViewClick = onViewClick
+        )
+    }
+}
+
+@Composable
+private fun AdMediaBlock(
+    ad: AdItem,
+    mediaSpec: AdMediaSpec,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(AppRadius.Medium)
+            .background(mediaSpec.color)
+            .padding(AppSpacing.Medium)
+    ) {
+        Text(
+            text = mediaSpec.labelPrefix + ad.mediaLabel,
+            color = AppColors.OnPrimary,
+            style = MaterialTheme.typography.labelLarge
+        )
+        if (mediaSpec.showPlayButton) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(AppSpacing.PlayButton)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.9f)),
+                contentAlignment = Alignment.Center
+            ) {
                 Text(
-                    text = ad.title,
-                    color = AppColors.TextPrimary,
-                    style = MaterialTheme.typography.titleMedium
+                    text = "\u64ad\u653e",
+                    color = AppColors.Primary,
+                    style = MaterialTheme.typography.labelLarge
                 )
             }
+        }
+        if (mediaSpec.showChannelBadge) {
             Text(
                 text = channelLabelFor(ad.channel),
-                color = AppColors.Primary,
+                modifier = Modifier.align(Alignment.BottomStart),
+                color = AppColors.OnPrimary,
                 style = MaterialTheme.typography.labelLarge
             )
+        }
+    }
+}
+
+@Composable
+private fun AdSummaryContent(
+    ad: AdItem,
+    modifier: Modifier = Modifier,
+    titleFirst: Boolean = false,
+    showChannelInline: Boolean = false
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+    ) {
+        if (titleFirst) {
+            Text(
+                text = ad.title,
+                color = AppColors.TextPrimary,
+                style = MaterialTheme.typography.titleMedium
+            )
+            AdSummaryHeader(ad = ad, showTitle = false, showChannelInline = true)
+        } else {
+            AdSummaryHeader(ad = ad, showChannelInline = showChannelInline)
         }
         Text(
             text = ad.summary,
@@ -332,27 +416,71 @@ private fun AdCard(
             style = MaterialTheme.typography.bodyMedium
         )
         TagRow(tags = ad.tags)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)
-        ) {
-            ActionChip(
-                text = if (liked) "\u5df2\u70b9\u8d5e" else "\u70b9\u8d5e",
-                selected = liked,
-                onClick = onLikeClick
+    }
+}
+
+@Composable
+private fun AdSummaryHeader(
+    ad: AdItem,
+    showTitle: Boolean = true,
+    showChannelInline: Boolean = true
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = ad.brandName,
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
             )
-            ActionChip(
-                text = if (collected) "\u5df2\u6536\u85cf" else "\u6536\u85cf",
-                selected = collected,
-                onClick = onCollectClick
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            ActionChip(
-                text = "\u67e5\u770b",
-                selected = true,
-                onClick = onViewClick
+            if (showTitle) {
+                Text(
+                    text = ad.title,
+                    color = AppColors.TextPrimary,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+        }
+        if (showChannelInline) {
+            Text(
+                text = channelLabelFor(ad.channel),
+                color = AppColors.Primary,
+                style = MaterialTheme.typography.labelLarge
             )
         }
+    }
+}
+
+@Composable
+private fun AdActionRow(
+    liked: Boolean,
+    collected: Boolean,
+    onLikeClick: () -> Unit,
+    onCollectClick: () -> Unit,
+    onViewClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+    ) {
+        ActionChip(
+            text = if (liked) "\u5df2\u70b9\u8d5e" else "\u70b9\u8d5e",
+            selected = liked,
+            onClick = onLikeClick
+        )
+        ActionChip(
+            text = if (collected) "\u5df2\u6536\u85cf" else "\u6536\u85cf",
+            selected = collected,
+            onClick = onCollectClick
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        ActionChip(
+            text = "\u67e5\u770b",
+            selected = true,
+            onClick = onViewClick
+        )
     }
 }
 
@@ -423,12 +551,40 @@ private fun EmptyFeed() {
     }
 }
 
-private fun mediaColorFor(adType: AdType): Color = when (adType) {
-    AdType.SmallImage -> Color(0xFF0F766E)
-    AdType.ImageText -> Color(0xFF7C3AED)
-    AdType.Video -> Color(0xFFDC2626)
-    AdType.LargeImage -> Color(0xFF2563EB)
+private data class AdMediaSpec(
+    val height: Dp,
+    val color: Color,
+    val labelPrefix: String = "",
+    val showPlayButton: Boolean = false,
+    val showChannelBadge: Boolean = false
+)
+
+private fun mediaSpecFor(adType: AdType): AdMediaSpec = when (adType) {
+    AdType.SmallImage -> AdMediaSpec(
+        height = AppSpacing.CompactMediaHeight,
+        color = Color(0xFF0F766E),
+        labelPrefix = "\u5c0f\u56fe / "
+    )
+    AdType.ImageText -> AdMediaSpec(
+        height = AppSpacing.ImageTextMediaHeight,
+        color = Color(0xFF7C3AED),
+        labelPrefix = "\u56fe\u6587 / "
+    )
+    AdType.Video -> AdMediaSpec(
+        height = AppSpacing.VideoMediaHeight,
+        color = Color(0xFFDC2626),
+        labelPrefix = "\u89c6\u9891 / ",
+        showPlayButton = true
+    )
+    AdType.LargeImage -> AdMediaSpec(
+        height = AppSpacing.LargeImageMediaHeight,
+        color = Color(0xFF2563EB),
+        labelPrefix = "\u5927\u56fe / ",
+        showChannelBadge = true
+    )
 }
+
+private fun mediaColorFor(adType: AdType): Color = mediaSpecFor(adType).color
 
 private fun channelLabelFor(channel: Channel): String = when (channel) {
     Channel.Featured -> "\u63a8\u8350"
