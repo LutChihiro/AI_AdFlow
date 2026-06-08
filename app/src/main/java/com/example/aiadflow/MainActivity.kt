@@ -751,6 +751,11 @@ private fun channelLabelFor(channel: Channel): String = when (channel) {
     Channel.Featured -> "\u63a8\u8350"
     Channel.Ecommerce -> "\u7535\u5546"
     Channel.Local -> "\u672c\u5730"
+    Channel.NewArrival -> "\u65b0\u54c1"
+    Channel.Finance -> "\u91d1\u878d"
+    Channel.Health -> "\u5065\u5eb7"
+    Channel.Travel -> "\u51fa\u884c"
+    Channel.Education -> "\u6559\u80b2"
 }
 
 private fun AdFeedUiState.hasActiveFilters(): Boolean {
@@ -935,5 +940,35 @@ private val PreviewAds = listOf(
         summary = "\u0041\u0049 \u6458\u8981\uff1a\u591c\u95f4\u653e\u677e\u573a\u666f\u4e0e\u9650\u65f6\u7ec4\u5408\u6298\u6263\u7684\u7ed3\u5408\u8868\u73b0\u66f4\u7a33\u5b9a\u3002",
         mediaLabel = "\u5c0f\u56fe\u7d20\u6750",
         tags = listOf("\u5bb6\u5c45", "\u7597\u6108", "\u7ec4\u5408")
+    ),
+    AdItem(
+        id = 104,
+        channel = Channel.Finance,
+        type = AdType.ImageText,
+        brandName = "Bluebird Pay",
+        title = "Weekend cashback boost",
+        summary = "AI suggests highlighting groceries, transport, and dining as everyday cashback scenes.",
+        mediaLabel = "Finance card",
+        tags = listOf("Finance", "Cashback", "Dining")
+    ),
+    AdItem(
+        id = 105,
+        channel = Channel.Health,
+        type = AdType.LargeImage,
+        brandName = "Daily Greens",
+        title = "Morning nutrition subscription",
+        summary = "Best-performing copy connects breakfast routines with simple energy and wellness habits.",
+        mediaLabel = "Health visual",
+        tags = listOf("Health", "Wellness", "Subscription")
+    ),
+    AdItem(
+        id = 106,
+        channel = Channel.Education,
+        type = AdType.SmallImage,
+        brandName = "SkillForge",
+        title = "AI design course trial lesson",
+        summary = "Campaign should highlight portfolio outcomes, guided practice, and a short trial format.",
+        mediaLabel = "Course image",
+        tags = listOf("Education", "AI", "Creator")
     )
 )

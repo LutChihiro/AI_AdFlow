@@ -7,8 +7,8 @@ import com.example.aiadflow.data.model.Channel
 object MockAdProvider {
     fun channels(): List<Channel> = Channel.entries
 
-    fun ads(): List<AdItem> {
-        val ads = listOf(
+    fun ads(): List<AdItem> = requireUniqueIds(
+        listOf(
             AdItem(
                 id = 1,
                 channel = Channel.Featured,
@@ -139,11 +139,113 @@ object MockAdProvider {
                 summary = "Local service ads emphasize evening pickup, transparent pricing, and first-order savings.",
                 mediaLabel = "Service image",
                 tags = listOf("Service", "Local", "Pickup")
+            ),
+            AdItem(
+                id = 13,
+                channel = Channel.NewArrival,
+                type = AdType.LargeImage,
+                brandName = "PixelNest",
+                title = "New compact creator camera launch",
+                summary = "Launch creative should emphasize pocket size, stabilized clips, and quick social publishing.",
+                mediaLabel = "Launch hero",
+                tags = listOf("New", "Creator", "Digital")
+            ),
+            AdItem(
+                id = 14,
+                channel = Channel.NewArrival,
+                type = AdType.SmallImage,
+                brandName = "FreshStep",
+                title = "First drop breathable walking shoes",
+                summary = "Early campaign copy connects daily walking comfort with limited first-week colorways.",
+                mediaLabel = "New item",
+                tags = listOf("New", "Sports", "Commute")
+            ),
+            AdItem(
+                id = 15,
+                channel = Channel.Finance,
+                type = AdType.ImageText,
+                brandName = "Bluebird Pay",
+                title = "Weekend cashback boost",
+                summary = "AI suggests highlighting groceries, transport, and dining as everyday cashback scenes.",
+                mediaLabel = "Finance card",
+                tags = listOf("Finance", "Cashback", "Dining")
+            ),
+            AdItem(
+                id = 16,
+                channel = Channel.Finance,
+                type = AdType.Video,
+                brandName = "Mint Ledger",
+                title = "Budget planner onboarding",
+                summary = "Short video explains monthly spend categories and a low-friction setup path.",
+                mediaLabel = "Video",
+                videoUrl = "https://cdn.example.com/ads/mint-ledger-onboarding.mp4",
+                coverUrl = "https://cdn.example.com/ads/mint-ledger-onboarding-cover.jpg",
+                tags = listOf("Finance", "Budget", "Onboarding")
+            ),
+            AdItem(
+                id = 17,
+                channel = Channel.Health,
+                type = AdType.LargeImage,
+                brandName = "Daily Greens",
+                title = "Morning nutrition subscription",
+                summary = "Best-performing copy connects breakfast routines with simple energy and wellness habits.",
+                mediaLabel = "Health visual",
+                tags = listOf("Health", "Wellness", "Subscription")
+            ),
+            AdItem(
+                id = 18,
+                channel = Channel.Health,
+                type = AdType.SmallImage,
+                brandName = "CalmDesk",
+                title = "Five-minute office stretch guide",
+                summary = "Promote short breaks to desk workers searching for posture and neck-relief tips.",
+                mediaLabel = "Health image",
+                tags = listOf("Health", "Office", "Wellness")
+            ),
+            AdItem(
+                id = 19,
+                channel = Channel.Travel,
+                type = AdType.ImageText,
+                brandName = "CloudTrip",
+                title = "Three-day city break package",
+                summary = "AI recommends pairing flexible booking with local food and transit convenience.",
+                mediaLabel = "Travel story",
+                tags = listOf("Travel", "Dining", "Deal")
+            ),
+            AdItem(
+                id = 20,
+                channel = Channel.Travel,
+                type = AdType.Video,
+                brandName = "TrailGo",
+                title = "Beginner weekend hiking route",
+                summary = "Video creative uses route preview, gear checklist, and weather planning to reduce hesitation.",
+                mediaLabel = "Video",
+                videoUrl = "https://cdn.example.com/ads/trailgo-weekend-route.mp4",
+                coverUrl = "https://cdn.example.com/ads/trailgo-weekend-route-cover.jpg",
+                tags = listOf("Travel", "Outdoor", "Weekend")
+            ),
+            AdItem(
+                id = 21,
+                channel = Channel.Education,
+                type = AdType.LargeImage,
+                brandName = "SkillForge",
+                title = "AI design course trial lesson",
+                summary = "Campaign should highlight portfolio outcomes, guided practice, and a short trial format.",
+                mediaLabel = "Course hero",
+                tags = listOf("Education", "AI", "Creator")
+            ),
+            AdItem(
+                id = 22,
+                channel = Channel.Education,
+                type = AdType.SmallImage,
+                brandName = "LangLoop",
+                title = "Daily speaking practice plan",
+                summary = "AI suggests focusing on ten-minute habit formation and confidence in real conversations.",
+                mediaLabel = "Course image",
+                tags = listOf("Education", "Language", "Student")
+            )
         )
-        )
-
-        return requireUniqueIds(ads)
-    }
+    )
 
     private fun requireUniqueIds(ads: List<AdItem>): List<AdItem> {
         val duplicateIds = ads
