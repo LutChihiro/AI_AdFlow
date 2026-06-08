@@ -904,59 +904,111 @@ private fun AdDetailScreen(
                 DetailTopBar(onBackClick = onBackClick)
             }
             item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(AppSpacing.AdMediaHeight)
-                        .clip(AppRadius.Large)
-                        .background(mediaColorFor(ad.type))
-                        .padding(AppSpacing.Medium)
-                ) {
-                    Text(
-                        text = ad.mediaLabel,
-                        color = AppColors.OnPrimary,
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                    if (ad.type == AdType.Video) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(AppSpacing.PlayButton)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.9f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "\u64ad\u653e",
-                                color = AppColors.Primary,
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                        }
-                    }
-                    Text(
-                        text = channelLabelFor(ad.channel),
-                        modifier = Modifier.align(Alignment.BottomStart),
-                        color = AppColors.OnPrimary,
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                if (ad.type == AdType.ImageText) {
+                    ImageTextDetailContent(ad = ad)
+                } else {
+                    StandardDetailContent(ad = ad)
                 }
             }
-            item {
-                DetailField(label = "\u54c1\u724c\u540d", value = ad.brandName)
-            }
-            item {
-                DetailField(label = "\u6807\u9898", value = ad.title)
-            }
-            item {
-                DetailField(label = "\u0041\u0049 \u6458\u8981", value = ad.summary)
-            }
-            item {
-                DetailField(
-                    label = "\u5e7f\u544a\u6807\u7b7e",
-                    value = ad.tags.joinToString(separator = "  ") { "#$it" }
+        }
+    }
+}
+
+@Composable
+private fun StandardDetailContent(ad: AdItem) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)) {
+        DetailMediaBlock(ad = ad, height = AppSpacing.AdMediaHeight)
+        DetailField(label = "\u54c1\u724c\u540d", value = ad.brandName)
+        DetailField(label = "\u6807\u9898", value = ad.title)
+        DetailField(label = "\u0041\u0049 \u6458\u8981", value = ad.summary)
+        DetailField(
+            label = "\u5e7f\u544a\u6807\u7b7e",
+            value = ad.tags.joinToString(separator = "  ") { "#$it" }
+        )
+    }
+}
+
+@Composable
+private fun ImageTextDetailContent(ad: AdItem) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)) {
+        DetailMediaBlock(ad = ad, height = AppSpacing.ImageTextMediaHeight)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(AppRadius.Large)
+                .background(AppColors.Surface)
+                .padding(AppSpacing.Medium),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+        ) {
+            Text(
+                text = ad.brandName,
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = ad.title,
+                color = AppColors.TextPrimary,
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = "\u0041\u0049 \u6458\u8981",
+                color = AppColors.Primary,
+                style = MaterialTheme.typography.labelLarge
+            )
+            Text(
+                text = ad.summary,
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = ad.tags.joinToString(separator = "  ") { "#$it" },
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailMediaBlock(
+    ad: AdItem,
+    height: Dp
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .clip(AppRadius.Large)
+            .background(mediaColorFor(ad.type))
+            .padding(AppSpacing.Medium)
+    ) {
+        Text(
+            text = ad.mediaLabel,
+            color = AppColors.OnPrimary,
+            style = MaterialTheme.typography.labelLarge
+        )
+        if (ad.type == AdType.Video) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(AppSpacing.PlayButton)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.9f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "\u64ad\u653e",
+                    color = AppColors.Primary,
+                    style = MaterialTheme.typography.labelLarge
                 )
             }
         }
+        Text(
+            text = channelLabelFor(ad.channel),
+            modifier = Modifier.align(Alignment.BottomStart),
+            color = AppColors.OnPrimary,
+            style = MaterialTheme.typography.labelLarge
+        )
     }
 }
 
