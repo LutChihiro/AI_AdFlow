@@ -102,6 +102,17 @@ class AdFeedViewModel(
         }
     }
 
+    fun clearFilters() {
+        _uiState.update { current ->
+            current.copy(
+                selectedChannel = null,
+                searchText = "",
+                selectedTag = null,
+                ads = repository.getAds()
+            )
+        }
+    }
+
     /** 使用当前频道和搜索词重新拉取广告列表。 */
     fun refreshAds() {
         _uiState.update { current ->

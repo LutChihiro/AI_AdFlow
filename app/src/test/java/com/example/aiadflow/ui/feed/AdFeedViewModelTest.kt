@@ -114,6 +114,23 @@ class AdFeedViewModelTest {
     }
 
     @Test
+    fun clearFiltersResetsChannelSearchTextSelectedTagAndAds() {
+        val viewModel = AdFeedViewModel()
+        val initialAdIds = viewModel.uiState.value.ads.map { it.id }
+
+        viewModel.switchChannel(Channel.Ecommerce)
+        viewModel.updateSearchText("backpack")
+        viewModel.selectTag("Commute")
+        viewModel.clearFilters()
+
+        val state = viewModel.uiState.value
+        assertEquals(null, state.selectedChannel)
+        assertEquals("", state.searchText)
+        assertEquals(null, state.selectedTag)
+        assertEquals(initialAdIds, state.ads.map { it.id })
+    }
+
+    @Test
     fun trackAdImpressionUpdatesExposureStats() {
         val viewModel = AdFeedViewModel()
         val ad = viewModel.uiState.value.ads.first()

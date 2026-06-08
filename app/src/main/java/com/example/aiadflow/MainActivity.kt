@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
                     onChannelSelected = viewModel::switchChannel,
                     onSearchChange = viewModel::updateSearchText,
                     onTagSelected = viewModel::selectTag,
+                    onClearFilters = viewModel::clearFilters,
                     onAdClick = viewModel::trackAdClick
                 )
             }
@@ -82,6 +83,7 @@ private fun HomeScreen(
     onChannelSelected: (Channel?) -> Unit,
     onSearchChange: (String) -> Unit,
     onTagSelected: (String?) -> Unit,
+    onClearFilters: () -> Unit,
     onAdClick: (AdItem) -> Unit
 ) {
     val likedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
@@ -116,6 +118,14 @@ private fun HomeScreen(
                     query = uiState.searchText,
                     onQueryChange = onSearchChange
                 )
+            }
+            if (uiState.hasActiveFilters()) {
+                item(key = "active-filters") {
+                    ActiveFiltersBar(
+                        uiState = uiState,
+                        onClearFilters = onClearFilters
+                    )
+                }
             }
             if (uiState.ads.isEmpty()) {
                 item(key = "empty-feed") {
@@ -296,6 +306,34 @@ private fun SearchBar(
                 }
                 innerTextField()
             }
+        )
+    }
+}
+
+@Composable
+private fun ActiveFiltersBar(
+    uiState: AdFeedUiState,
+    onClearFilters: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(AppRadius.Large)
+            .background(AppColors.Surface)
+            .padding(AppSpacing.Medium),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+    ) {
+        Text(
+            text = activeFilterLabel(uiState),
+            modifier = Modifier.weight(1f),
+            color = AppColors.TextSecondary,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        ActionChip(
+            text = "\u6e05\u9664",
+            selected = false,
+            onClick = onClearFilters
         )
     }
 }
@@ -662,6 +700,20 @@ private fun channelLabelFor(channel: Channel): String = when (channel) {
     Channel.Local -> "\u672c\u5730"
 }
 
+private fun AdFeedUiState.hasActiveFilters(): Boolean {
+    return selectedChannel != null || searchText.isNotBlank() || !selectedTag.isNullOrBlank()
+}
+
+private fun activeFilterLabel(uiState: AdFeedUiState): String {
+    val filters = buildList {
+        uiState.selectedChannel?.let { add(channelLabelFor(it)) }
+        uiState.searchText.takeIf { it.isNotBlank() }?.let { add("\"${it.trim()}\"") }
+        uiState.selectedTag?.takeIf { it.isNotBlank() }?.let { add("#${it.trim()}") }
+    }
+
+    return filters.joinToString(separator = "  ")
+}
+
 @Preview(
     name = "Home feed",
     showBackground = true,
@@ -679,6 +731,7 @@ private fun HomeScreenPreview() {
             onChannelSelected = {},
             onSearchChange = {},
             onTagSelected = {},
+            onClearFilters = {},
             onAdClick = {}
         )
     }
