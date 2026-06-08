@@ -39,8 +39,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -96,12 +98,13 @@ class MainActivity : ComponentActivity() {
                         HomeScreen(
                             uiState = uiState,
                             onChannelSelected = viewModel::switchChannel,
-                            onSearchChange = viewModel::updateSearchText,
-                            onTagSelected = viewModel::selectTag,
-                            onClearFilters = viewModel::clearFilters,
-                            onAdClick = { ad ->
-                                viewModel.trackAdClick(ad)
-                                selectedAd = ad
+                        onSearchChange = viewModel::updateSearchText,
+                        onTagSelected = viewModel::selectTag,
+                        onClearFilters = viewModel::clearFilters,
+                        onRefresh = viewModel::refreshAds,
+                        onAdClick = { ad ->
+                            viewModel.trackAdClick(ad)
+                            selectedAd = ad
                             }
                         )
                     } else {
@@ -123,6 +126,7 @@ private fun HomeScreen(
     onSearchChange: (String) -> Unit,
     onTagSelected: (String?) -> Unit,
     onClearFilters: () -> Unit,
+    onRefresh: () -> Unit,
     onAdClick: (AdItem) -> Unit
 ) {
     val likedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
@@ -132,13 +136,17 @@ private fun HomeScreen(
         modifier = Modifier.fillMaxSize(),
         color = AppColors.PageBackground
     ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = AppSpacing.PageHorizontal),
-            contentPadding = PaddingValues(bottom = AppSpacing.Section),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)
+        AdFeedRefreshContainer(
+            isRefreshing = uiState.isLoading,
+            onRefresh = onRefresh
         ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = AppSpacing.PageHorizontal),
+                contentPadding = PaddingValues(bottom = AppSpacing.Section),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)
+            ) {
             item(key = "status-bars-spacer") {
                 Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
             }
@@ -195,6 +203,7 @@ private fun HomeScreen(
             }
         }
     }
+}
 }
 
 @Composable
@@ -901,6 +910,7 @@ private fun HomeScreenPreview() {
                         searchText = ""
                         selectedTag = null
                     },
+                    onRefresh = {},
                     onAdClick = { selectedAd = it }
                 )
             }
@@ -954,6 +964,22 @@ private fun AdDetailScreen(
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AdFeedRefreshContainer(
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        content()
     }
 }
 
