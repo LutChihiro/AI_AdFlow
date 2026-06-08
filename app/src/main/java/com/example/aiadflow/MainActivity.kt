@@ -904,10 +904,10 @@ private fun AdDetailScreen(
                 DetailTopBar(onBackClick = onBackClick)
             }
             item {
-                if (ad.type == AdType.ImageText) {
-                    ImageTextDetailContent(ad = ad)
-                } else {
-                    StandardDetailContent(ad = ad)
+                when (ad.type) {
+                    AdType.ImageText -> ImageTextDetailContent(ad = ad)
+                    AdType.Video -> VideoDetailContent(ad = ad)
+                    else -> StandardDetailContent(ad = ad)
                 }
             }
         }
@@ -949,6 +949,69 @@ private fun ImageTextDetailContent(ad: AdItem) {
                 text = ad.title,
                 color = AppColors.TextPrimary,
                 style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = "\u0041\u0049 \u6458\u8981",
+                color = AppColors.Primary,
+                style = MaterialTheme.typography.labelLarge
+            )
+            Text(
+                text = ad.summary,
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                text = ad.tags.joinToString(separator = "  ") { "#$it" },
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
+            )
+        }
+    }
+}
+
+@Composable
+private fun VideoDetailContent(ad: AdItem) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)) {
+        DetailMediaBlock(ad = ad, height = AppSpacing.VideoMediaHeight)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(AppRadius.Large)
+                .background(AppColors.Surface)
+                .padding(AppSpacing.Medium),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = ad.brandName,
+                        color = AppColors.TextSecondary,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = ad.title,
+                        color = AppColors.TextPrimary,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+                Text(
+                    text = channelLabelFor(ad.channel),
+                    color = AppColors.Primary,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+            Text(
+                text = "\u89c6\u9891\u7d20\u6750",
+                color = AppColors.Primary,
+                style = MaterialTheme.typography.labelLarge
+            )
+            Text(
+                text = ad.videoUrl ?: "\u672c\u5730 mock \u89c6\u9891",
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
             )
             Text(
                 text = "\u0041\u0049 \u6458\u8981",
