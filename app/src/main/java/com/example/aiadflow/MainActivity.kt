@@ -37,8 +37,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -781,15 +783,48 @@ private fun activeFilterLabel(uiState: AdFeedUiState): String {
 @Composable
 private fun HomeScreenPreview() {
     AIAdFlowTheme {
+        var selectedChannel by remember { mutableStateOf<Channel?>(null) }
+        var searchText by remember { mutableStateOf("") }
+        var selectedTag by remember { mutableStateOf<String?>(null) }
+        val visibleAds = remember(selectedChannel, searchText, selectedTag) {
+            PreviewAds
+                .filter { selectedChannel == null || it.channel == selectedChannel }
+                .filter { ad ->
+                    val query = searchText.trim()
+                    query.isBlank() ||
+                        ad.title.contains(query, ignoreCase = true) ||
+                        ad.summary.contains(query, ignoreCase = true) ||
+                        ad.tags.any { it.contains(query, ignoreCase = true) }
+                }
+                .filter { ad ->
+                    selectedTag.isNullOrBlank() ||
+                        ad.tags.any { it.equals(selectedTag, ignoreCase = true) }
+                }
+        }
+
         HomeScreen(
             uiState = AdFeedUiState(
                 channels = Channel.entries,
-                ads = PreviewAds
+                selectedChannel = selectedChannel,
+                searchText = searchText,
+                selectedTag = selectedTag,
+                ads = visibleAds
             ),
-            onChannelSelected = {},
-            onSearchChange = {},
-            onTagSelected = {},
-            onClearFilters = {},
+            onChannelSelected = { selectedChannel = it },
+            onSearchChange = { searchText = it },
+            onTagSelected = { tag ->
+                selectedTag = tag
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { nextTag ->
+                        if (nextTag.equals(selectedTag, ignoreCase = true)) null else nextTag
+                    }
+            },
+            onClearFilters = {
+                selectedChannel = null
+                searchText = ""
+                selectedTag = null
+            },
             onAdClick = {}
         )
     }
