@@ -70,15 +70,27 @@ class MainActivity : ComponentActivity() {
             AIAdFlowTheme {
                 val viewModel = remember { AdFeedViewModel() }
                 val uiState by viewModel.uiState.collectAsState()
+                var selectedAd by remember { mutableStateOf<AdItem?>(null) }
 
-                HomeScreen(
-                    uiState = uiState,
-                    onChannelSelected = viewModel::switchChannel,
-                    onSearchChange = viewModel::updateSearchText,
-                    onTagSelected = viewModel::selectTag,
-                    onClearFilters = viewModel::clearFilters,
-                    onAdClick = viewModel::trackAdClick
-                )
+                val detailAd = selectedAd
+                if (detailAd == null) {
+                    HomeScreen(
+                        uiState = uiState,
+                        onChannelSelected = viewModel::switchChannel,
+                        onSearchChange = viewModel::updateSearchText,
+                        onTagSelected = viewModel::selectTag,
+                        onClearFilters = viewModel::clearFilters,
+                        onAdClick = { ad ->
+                            viewModel.trackAdClick(ad)
+                            selectedAd = ad
+                        }
+                    )
+                } else {
+                    AdDetailScreen(
+                        ad = detailAd,
+                        onBackClick = { selectedAd = null }
+                    )
+                }
             }
         }
     }
@@ -862,12 +874,18 @@ private fun HomeScreenPreview() {
 @Composable
 private fun AdDetailScreenPreview() {
     AIAdFlowTheme {
-        AdDetailPreviewContent(ad = PreviewAds.first())
+        AdDetailScreen(
+            ad = PreviewAds.first(),
+            onBackClick = {}
+        )
     }
 }
 
 @Composable
-private fun AdDetailPreviewContent(ad: AdItem) {
+private fun AdDetailScreen(
+    ad: AdItem,
+    onBackClick: () -> Unit
+) {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = AppColors.PageBackground
@@ -883,11 +901,7 @@ private fun AdDetailPreviewContent(ad: AdItem) {
                 Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
             }
             item {
-                Text(
-                    text = "\u5e7f\u544a\u8be6\u60c5",
-                    color = AppColors.TextPrimary,
-                    style = MaterialTheme.typography.headlineMedium
-                )
+                DetailTopBar(onBackClick = onBackClick)
             }
             item {
                 Box(
@@ -903,6 +917,22 @@ private fun AdDetailPreviewContent(ad: AdItem) {
                         color = AppColors.OnPrimary,
                         style = MaterialTheme.typography.labelLarge
                     )
+                    if (ad.type == AdType.Video) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(AppSpacing.PlayButton)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.9f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "\u64ad\u653e",
+                                color = AppColors.Primary,
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
+                    }
                     Text(
                         text = channelLabelFor(ad.channel),
                         modifier = Modifier.align(Alignment.BottomStart),
@@ -912,16 +942,16 @@ private fun AdDetailPreviewContent(ad: AdItem) {
                 }
             }
             item {
-                PreviewDetailField(label = "\u54c1\u724c\u540d", value = ad.brandName)
+                DetailField(label = "\u54c1\u724c\u540d", value = ad.brandName)
             }
             item {
-                PreviewDetailField(label = "\u6807\u9898", value = ad.title)
+                DetailField(label = "\u6807\u9898", value = ad.title)
             }
             item {
-                PreviewDetailField(label = "\u0041\u0049 \u6458\u8981", value = ad.summary)
+                DetailField(label = "\u0041\u0049 \u6458\u8981", value = ad.summary)
             }
             item {
-                PreviewDetailField(
+                DetailField(
                     label = "\u5e7f\u544a\u6807\u7b7e",
                     value = ad.tags.joinToString(separator = "  ") { "#$it" }
                 )
@@ -931,7 +961,29 @@ private fun AdDetailPreviewContent(ad: AdItem) {
 }
 
 @Composable
-private fun PreviewDetailField(
+private fun DetailTopBar(onBackClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(AppSpacing.HeaderHeight),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Medium)
+    ) {
+        ActionChip(
+            text = "\u8fd4\u56de",
+            selected = false,
+            onClick = onBackClick
+        )
+        Text(
+            text = "\u5e7f\u544a\u8be6\u60c5",
+            color = AppColors.TextPrimary,
+            style = MaterialTheme.typography.headlineMedium
+        )
+    }
+}
+
+@Composable
+private fun DetailField(
     label: String,
     value: String
 ) {
