@@ -44,6 +44,8 @@ object AppSpacing {
     val TabHeight = 44.dp
     /** 频道 tab 固定宽度，保证横向滚动时每个频道尺寸稳定。 */
     val TabWidth = 78.dp
+    /** 频道 tab 未选中态描边宽度。 */
+    val TabBorderWidth = 1.dp
     /** 搜索框高度。 */
     val SearchHeight = 56.dp
     /** 大图和视频广告的媒体区域高度。 */

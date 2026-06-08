@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -219,19 +220,29 @@ private fun ChannelTabChip(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val backgroundColor = if (selected) AppColors.Primary else AppColors.PageBackground
+    val borderColor = if (selected) AppColors.Primary else AppColors.MediaPlaceholder
+    val textColor = if (selected) AppColors.OnPrimary else AppColors.TextSecondary
+    val textWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+
     Box(
         modifier = modifier
             .width(AppSpacing.TabWidth)
             .height(AppSpacing.TabHeight)
             .clip(AppRadius.Full)
-            .background(if (selected) AppColors.Primary else AppColors.PageBackground)
+            .background(backgroundColor)
+            .border(
+                width = AppSpacing.TabBorderWidth,
+                color = borderColor,
+                shape = AppRadius.Full
+            )
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            color = if (selected) AppColors.OnPrimary else AppColors.TextSecondary,
-            style = MaterialTheme.typography.labelLarge
+            color = textColor,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = textWeight)
         )
     }
 }
