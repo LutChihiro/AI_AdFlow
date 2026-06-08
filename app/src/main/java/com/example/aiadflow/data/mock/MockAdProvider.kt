@@ -28,6 +28,8 @@ object MockAdProvider {
                 title = "Seven-day creator fitness challenge",
                 summary = "Short video creative highlights daily progress, shareable milestones, and a low-friction trial path.",
                 mediaLabel = "Video creative",
+                videoUrl = "https://cdn.example.com/ads/runlab-creator-challenge.mp4",
+                coverUrl = "https://cdn.example.com/ads/runlab-creator-challenge-cover.jpg",
                 tags = listOf("Fitness", "Creator", "Trial")
             ),
             AdItem(
@@ -91,6 +93,8 @@ object MockAdProvider {
                 title = "Adjustable desk lamp for focused work",
                 summary = "Video creative shows brightness modes, cable management, and compact desk setups.",
                 mediaLabel = "Video",
+                videoUrl = "https://cdn.example.com/ads/desklite-focused-work.mp4",
+                coverUrl = "https://cdn.example.com/ads/desklite-focused-work-cover.jpg",
                 tags = listOf("Office", "Study", "Lighting")
             ),
             AdItem(
@@ -111,6 +115,8 @@ object MockAdProvider {
                 title = "First visit posture assessment",
                 summary = "A short AI-assisted movement check with beginner training suggestions.",
                 mediaLabel = "Video",
+                videoUrl = "https://cdn.example.com/ads/blue-bridge-posture-assessment.mp4",
+                coverUrl = "https://cdn.example.com/ads/blue-bridge-posture-assessment-cover.jpg",
                 tags = listOf("Sports", "Local", "Health")
             ),
             AdItem(

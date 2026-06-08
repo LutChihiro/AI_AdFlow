@@ -21,6 +21,10 @@ data class AdItem(
     val summary: String,
     /** 媒体占位区域里的标签文案，例如图片或视频类型说明。 */
     val mediaLabel: String,
+    /** Video ad playback URL. Non-video ads keep this as null. */
+    val videoUrl: String? = null,
+    /** Video ad cover image URL. Non-video ads keep this as null. */
+    val coverUrl: String? = null,
     /** 可搜索标签，会在广告摘要下方渲染为标签 chip。 */
     val tags: List<String>,
     /** 数据源给出的初始点赞状态，用户临时点击状态不直接修改该模型。 */

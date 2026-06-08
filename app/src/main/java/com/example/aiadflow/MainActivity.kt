@@ -725,6 +725,8 @@ private val PreviewAds = listOf(
         title = "\u4e03\u5929\u521b\u4f5c\u8005\u6311\u6218",
         summary = "\u0041\u0049 \u6458\u8981\uff1a\u77ed\u89c6\u9891\u7d20\u6750\u7a81\u51fa\u8bad\u7ec3\u8fdb\u5ea6\u3001\u53ef\u5206\u4eab\u91cc\u7a0b\u7891\u548c\u4f4e\u95e8\u69db\u8bd5\u7528\u62a5\u540d\u8def\u5f84\u3002",
         mediaLabel = "\u89c6\u9891\u7d20\u6750",
+        videoUrl = "https://cdn.example.com/ads/runlab-creator-challenge.mp4",
+        coverUrl = "https://cdn.example.com/ads/runlab-creator-challenge-cover.jpg",
         tags = listOf("\u5065\u8eab", "\u521b\u4f5c\u8005", "\u8bd5\u7528")
     ),
     AdItem(
