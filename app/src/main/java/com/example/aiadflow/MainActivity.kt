@@ -821,6 +821,7 @@ private fun HomeScreenPreview() {
         var selectedChannel by remember { mutableStateOf<Channel?>(null) }
         var searchText by remember { mutableStateOf("") }
         var selectedTag by remember { mutableStateOf<String?>(null) }
+        var selectedAd by remember { mutableStateOf<AdItem?>(null) }
         val visibleAds = remember(selectedChannel, searchText, selectedTag) {
             PreviewAds
                 .filter { selectedChannel == null || it.channel == selectedChannel }
@@ -837,7 +838,12 @@ private fun HomeScreenPreview() {
                 }
         }
 
-        HomeScreen(
+        selectedAd?.let { ad ->
+            AdDetailScreen(
+                ad = ad,
+                onBackClick = { selectedAd = null }
+            )
+        } ?: HomeScreen(
             uiState = AdFeedUiState(
                 channels = Channel.entries,
                 selectedChannel = selectedChannel,
@@ -860,7 +866,7 @@ private fun HomeScreenPreview() {
                 searchText = ""
                 selectedTag = null
             },
-            onAdClick = {}
+            onAdClick = { selectedAd = it }
         )
     }
 }
