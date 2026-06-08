@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -181,23 +183,31 @@ private fun ChannelTabs(
     selectedChannel: Channel?,
     onChannelSelected: (Channel?) -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(AppRadius.Large)
+            .background(AppColors.Surface)
+            .padding(AppSpacing.Small)
     ) {
-        ChannelTabChip(
-            label = "\u5168\u90e8",
-            selected = selectedChannel == null,
-            modifier = Modifier.weight(1f),
-            onClick = { onChannelSelected(null) }
-        )
-        channels.forEach { channel ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+        ) {
             ChannelTabChip(
-                label = channelLabelFor(channel),
-                selected = selectedChannel == channel,
-                modifier = Modifier.weight(1f),
-                onClick = { onChannelSelected(channel) }
+                label = "\u5168\u90e8",
+                selected = selectedChannel == null,
+                onClick = { onChannelSelected(null) }
             )
+            channels.forEach { channel ->
+                ChannelTabChip(
+                    label = channelLabelFor(channel),
+                    selected = selectedChannel == channel,
+                    onClick = { onChannelSelected(channel) }
+                )
+            }
         }
     }
 }
@@ -211,9 +221,10 @@ private fun ChannelTabChip(
 ) {
     Box(
         modifier = modifier
+            .width(AppSpacing.TabWidth)
             .height(AppSpacing.TabHeight)
             .clip(AppRadius.Full)
-            .background(if (selected) AppColors.Primary else AppColors.Surface)
+            .background(if (selected) AppColors.Primary else AppColors.PageBackground)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
