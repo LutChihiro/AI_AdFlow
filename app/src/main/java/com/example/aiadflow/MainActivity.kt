@@ -1,6 +1,8 @@
 package com.example.aiadflow
 
 import android.os.Bundle
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -220,15 +222,28 @@ private fun ChannelTabChip(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val backgroundColor = if (selected) AppColors.Primary else AppColors.PageBackground
-    val borderColor = if (selected) AppColors.Primary else AppColors.MediaPlaceholder
-    val textColor = if (selected) AppColors.OnPrimary else AppColors.TextSecondary
+    val backgroundColor by animateColorAsState(
+        targetValue = if (selected) AppColors.Primary else AppColors.PageBackground,
+        label = "channelTabBackground"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) AppColors.Primary else AppColors.MediaPlaceholder,
+        label = "channelTabBorder"
+    )
+    val textColor by animateColorAsState(
+        targetValue = if (selected) AppColors.OnPrimary else AppColors.TextSecondary,
+        label = "channelTabText"
+    )
+    val tabHeight by animateDpAsState(
+        targetValue = if (selected) AppSpacing.TabSelectedHeight else AppSpacing.TabHeight,
+        label = "channelTabHeight"
+    )
     val textWeight = if (selected) FontWeight.Bold else FontWeight.Medium
 
     Box(
         modifier = modifier
             .width(AppSpacing.TabWidth)
-            .height(AppSpacing.TabHeight)
+            .height(tabHeight)
             .clip(AppRadius.Full)
             .background(backgroundColor)
             .border(

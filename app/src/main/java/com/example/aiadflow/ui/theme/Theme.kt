@@ -42,6 +42,8 @@ object AppSpacing {
     val IconButton = 44.dp
     /** 频道 tab 高度。 */
     val TabHeight = 44.dp
+    /** 频道 tab 选中态高度，用于切换时的轻微尺寸动效。 */
+    val TabSelectedHeight = 48.dp
     /** 频道 tab 固定宽度，保证横向滚动时每个频道尺寸稳定。 */
     val TabWidth = 78.dp
     /** 频道 tab 未选中态描边宽度。 */
