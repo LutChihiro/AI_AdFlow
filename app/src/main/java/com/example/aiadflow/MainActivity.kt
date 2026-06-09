@@ -664,6 +664,7 @@ private fun AdMediaBlock(
     modifier: Modifier = Modifier
 ) {
     var isVideoPlaying by remember(ad.id) { mutableStateOf(false) }
+    var isVideoMuted by remember(ad.id) { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -684,6 +685,13 @@ private fun AdMediaBlock(
                     .align(Alignment.Center)
                     .size(AppSpacing.PlayButton)
             )
+            VideoMuteButton(
+                isMuted = isVideoMuted,
+                onClick = { isVideoMuted = !isVideoMuted },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(AppSpacing.VideoMuteButton)
+            )
         }
         if (mediaSpec.showChannelBadge) {
             Text(
@@ -692,6 +700,62 @@ private fun AdMediaBlock(
                 color = AppColors.OnPrimary,
                 style = MaterialTheme.typography.labelLarge
             )
+        }
+    }
+}
+
+@Composable
+private fun VideoMuteButton(
+    isMuted: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.38f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(AppSpacing.VideoMuteIcon)) {
+            val speaker = Path().apply {
+                moveTo(size.width * 0.12f, size.height * 0.38f)
+                lineTo(size.width * 0.30f, size.height * 0.38f)
+                lineTo(size.width * 0.52f, size.height * 0.20f)
+                lineTo(size.width * 0.52f, size.height * 0.80f)
+                lineTo(size.width * 0.30f, size.height * 0.62f)
+                lineTo(size.width * 0.12f, size.height * 0.62f)
+                close()
+            }
+            drawPath(path = speaker, color = Color.White)
+
+            if (isMuted) {
+                drawLine(
+                    color = Color.White,
+                    start = androidx.compose.ui.geometry.Offset(size.width * 0.66f, size.height * 0.34f),
+                    end = androidx.compose.ui.geometry.Offset(size.width * 0.90f, size.height * 0.66f),
+                    strokeWidth = size.width * 0.09f
+                )
+                drawLine(
+                    color = Color.White,
+                    start = androidx.compose.ui.geometry.Offset(size.width * 0.90f, size.height * 0.34f),
+                    end = androidx.compose.ui.geometry.Offset(size.width * 0.66f, size.height * 0.66f),
+                    strokeWidth = size.width * 0.09f
+                )
+            } else {
+                drawLine(
+                    color = Color.White,
+                    start = androidx.compose.ui.geometry.Offset(size.width * 0.66f, size.height * 0.38f),
+                    end = androidx.compose.ui.geometry.Offset(size.width * 0.82f, size.height * 0.50f),
+                    strokeWidth = size.width * 0.08f
+                )
+                drawLine(
+                    color = Color.White,
+                    start = androidx.compose.ui.geometry.Offset(size.width * 0.82f, size.height * 0.50f),
+                    end = androidx.compose.ui.geometry.Offset(size.width * 0.66f, size.height * 0.62f),
+                    strokeWidth = size.width * 0.08f
+                )
+            }
         }
     }
 }
