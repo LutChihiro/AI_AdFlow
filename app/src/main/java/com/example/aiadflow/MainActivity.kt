@@ -118,6 +118,7 @@ class MainActivity : ComponentActivity() {
                             onLoadMore = viewModel::loadMoreAds,
                             onRetryLoadMore = viewModel::retryLoadMoreAds,
                             onLikeClick = viewModel::toggleLike,
+                            onCollectClick = viewModel::toggleCollect,
                             onAdClick = { adId ->
                                 viewModel.getAdDetail(adId)?.let { ad ->
                                     viewModel.trackAdClick(ad)
@@ -148,9 +149,9 @@ private fun HomeScreen(
     onLoadMore: () -> Unit,
     onRetryLoadMore: () -> Unit,
     onLikeClick: (Long) -> Unit,
+    onCollectClick: (Long) -> Unit,
     onAdClick: (Long) -> Unit
 ) {
-    val collectedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -253,12 +254,10 @@ private fun HomeScreen(
                     AdCard(
                         ad = ad,
                         liked = uiState.likedOverridesByAdId[ad.id] ?: ad.liked,
-                        collected = collectedOverrides[ad.id] ?: ad.collected,
+                        collected = uiState.collectedOverridesByAdId[ad.id] ?: ad.collected,
                         selectedTag = uiState.selectedTag,
                         onLikeClick = { onLikeClick(ad.id) },
-                        onCollectClick = {
-                            collectedOverrides[ad.id] = !(collectedOverrides[ad.id] ?: ad.collected)
-                        },
+                        onCollectClick = { onCollectClick(ad.id) },
                         onViewClick = {
                             onAdClick(ad.id)
                         },
@@ -984,6 +983,7 @@ private fun HomeScreenPreview() {
         var selectedTag by remember { mutableStateOf<String?>(null) }
         var selectedAd by remember { mutableStateOf<AdItem?>(null) }
         val likedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
+        val collectedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
         val visibleAds = remember(selectedChannel, searchText, selectedTag) {
             PreviewAds
                 .filter { selectedChannel == null || it.channel == selectedChannel }
@@ -1028,6 +1028,7 @@ private fun HomeScreenPreview() {
                         selectedTag = selectedTag,
                         ads = visibleAds,
                         likedOverridesByAdId = likedOverrides,
+                        collectedOverridesByAdId = collectedOverrides,
                         isLoadingMore = false,
                         hasMoreAds = false,
                         loadMoreErrorMessage = null
@@ -1053,6 +1054,11 @@ private fun HomeScreenPreview() {
                     onLikeClick = { adId ->
                         PreviewAds.firstOrNull { it.id == adId }?.let { ad ->
                             likedOverrides[adId] = !(likedOverrides[adId] ?: ad.liked)
+                        }
+                    },
+                    onCollectClick = { adId ->
+                        PreviewAds.firstOrNull { it.id == adId }?.let { ad ->
+                            collectedOverrides[adId] = !(collectedOverrides[adId] ?: ad.collected)
                         }
                     },
                     onAdClick = { adId ->

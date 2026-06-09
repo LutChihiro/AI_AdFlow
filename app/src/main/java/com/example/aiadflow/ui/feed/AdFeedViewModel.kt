@@ -35,6 +35,7 @@ data class AdFeedUiState(
     val clickCount: Int = 0,
     val clickCountsByAdId: Map<Long, Int> = emptyMap(),
     val likedOverridesByAdId: Map<Long, Boolean> = emptyMap(),
+    val collectedOverridesByAdId: Map<Long, Boolean> = emptyMap(),
     /** 是否正在加载数据，预留给后续真实接口接入。 */
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
@@ -240,6 +241,16 @@ class AdFeedViewModel(
             val currentLiked = current.likedOverridesByAdId[adId] ?: ad.liked
             current.copy(
                 likedOverridesByAdId = current.likedOverridesByAdId + (adId to !currentLiked)
+            )
+        }
+    }
+
+    fun toggleCollect(adId: Long) {
+        val ad = repository.getAdById(adId) ?: return
+        _uiState.update { current ->
+            val currentCollected = current.collectedOverridesByAdId[adId] ?: ad.collected
+            current.copy(
+                collectedOverridesByAdId = current.collectedOverridesByAdId + (adId to !currentCollected)
             )
         }
     }

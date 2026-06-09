@@ -199,4 +199,36 @@ class AdFeedViewModelTest {
 
         assertSame(initialLikedOverrides, viewModel.uiState.value.likedOverridesByAdId)
     }
+
+    @Test
+    fun toggleCollectCollectsUncollectedAd() {
+        val viewModel = AdFeedViewModel()
+        val ad = viewModel.uiState.value.ads.first { !it.collected }
+
+        viewModel.toggleCollect(ad.id)
+
+        val state = viewModel.uiState.value
+        assertEquals(true, state.collectedOverridesByAdId[ad.id])
+    }
+
+    @Test
+    fun toggleCollectUncollectsInitiallyCollectedAd() {
+        val viewModel = AdFeedViewModel()
+        val ad = viewModel.uiState.value.ads.first { it.collected }
+
+        viewModel.toggleCollect(ad.id)
+
+        val state = viewModel.uiState.value
+        assertEquals(false, state.collectedOverridesByAdId[ad.id])
+    }
+
+    @Test
+    fun toggleCollectIgnoresMissingAdId() {
+        val viewModel = AdFeedViewModel()
+        val initialCollectedOverrides = viewModel.uiState.value.collectedOverridesByAdId
+
+        viewModel.toggleCollect(-1L)
+
+        assertSame(initialCollectedOverrides, viewModel.uiState.value.collectedOverridesByAdId)
+    }
 }
