@@ -663,6 +663,8 @@ private fun AdMediaBlock(
     mediaSpec: AdMediaSpec,
     modifier: Modifier = Modifier
 ) {
+    var isVideoPlaying by remember(ad.id) { mutableStateOf(false) }
+
     Box(
         modifier = modifier
             .clip(AppRadius.Medium)
@@ -676,6 +678,8 @@ private fun AdMediaBlock(
         )
         if (mediaSpec.showPlayButton) {
             VideoPlayButton(
+                isPlaying = isVideoPlaying,
+                onClick = { isVideoPlaying = !isVideoPlaying },
                 modifier = Modifier
                     .align(Alignment.Center)
                     .size(AppSpacing.PlayButton)
@@ -694,22 +698,43 @@ private fun AdMediaBlock(
 
 @Composable
 private fun VideoPlayButton(
+    isPlaying: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.88f)),
+            .background(Color.White.copy(alpha = 0.88f))
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.size(AppSpacing.VideoPlayIcon)) {
-            val path = Path().apply {
-                moveTo(size.width * 0.36f, size.height * 0.22f)
-                lineTo(size.width * 0.36f, size.height * 0.78f)
-                lineTo(size.width * 0.82f, size.height * 0.5f)
-                close()
+            if (isPlaying) {
+                val barWidth = size.width * 0.22f
+                val gap = size.width * 0.16f
+                val top = size.height * 0.22f
+                val bottom = size.height * 0.78f
+                val leftStart = (size.width - barWidth * 2 - gap) / 2f
+                drawRect(
+                    color = AppColors.Primary,
+                    topLeft = androidx.compose.ui.geometry.Offset(leftStart, top),
+                    size = androidx.compose.ui.geometry.Size(barWidth, bottom - top)
+                )
+                drawRect(
+                    color = AppColors.Primary,
+                    topLeft = androidx.compose.ui.geometry.Offset(leftStart + barWidth + gap, top),
+                    size = androidx.compose.ui.geometry.Size(barWidth, bottom - top)
+                )
+            } else {
+                val path = Path().apply {
+                    moveTo(size.width * 0.36f, size.height * 0.22f)
+                    lineTo(size.width * 0.36f, size.height * 0.78f)
+                    lineTo(size.width * 0.82f, size.height * 0.5f)
+                    close()
+                }
+                drawPath(path = path, color = AppColors.Primary)
             }
-            drawPath(path = path, color = AppColors.Primary)
         }
     }
 }
