@@ -12,6 +12,7 @@ import androidx.compose.animation.togetherWith
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -65,6 +66,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -673,20 +675,11 @@ private fun AdMediaBlock(
             style = MaterialTheme.typography.labelLarge
         )
         if (mediaSpec.showPlayButton) {
-            Box(
+            VideoPlayButton(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .size(AppSpacing.PlayButton)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.9f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "\u64ad\u653e",
-                    color = AppColors.Primary,
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+            )
         }
         if (mediaSpec.showChannelBadge) {
             Text(
@@ -695,6 +688,28 @@ private fun AdMediaBlock(
                 color = AppColors.OnPrimary,
                 style = MaterialTheme.typography.labelLarge
             )
+        }
+    }
+}
+
+@Composable
+private fun VideoPlayButton(
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.88f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(AppSpacing.VideoPlayIcon)) {
+            val path = Path().apply {
+                moveTo(size.width * 0.36f, size.height * 0.22f)
+                lineTo(size.width * 0.36f, size.height * 0.78f)
+                lineTo(size.width * 0.82f, size.height * 0.5f)
+                close()
+            }
+            drawPath(path = path, color = AppColors.Primary)
         }
     }
 }

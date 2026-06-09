@@ -72,6 +72,7 @@ object AppSpacing {
     val SmallImageMediaWidth = 128.dp
     /** 视频播放入口尺寸。 */
     val PlayButton = 56.dp
+    val VideoPlayIcon = 22.dp
     /** 标签 chip 的垂直内边距。 */
     val TagVertical = 6.dp
     val TagBorderWidth = 1.dp
