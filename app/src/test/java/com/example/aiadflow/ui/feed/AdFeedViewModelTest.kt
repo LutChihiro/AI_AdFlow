@@ -131,6 +131,18 @@ class AdFeedViewModelTest {
     }
 
     @Test
+    fun getAdDetailReturnsAdByIdOutsideCurrentFilters() {
+        val viewModel = AdFeedViewModel()
+
+        viewModel.switchChannel(Channel.Local)
+
+        val ad = viewModel.getAdDetail(6L)
+
+        assertEquals(6L, ad?.id)
+        assertEquals(Channel.Ecommerce, ad?.channel)
+    }
+
+    @Test
     fun trackAdImpressionUpdatesExposureStats() {
         val viewModel = AdFeedViewModel()
         val ad = viewModel.uiState.value.ads.first()

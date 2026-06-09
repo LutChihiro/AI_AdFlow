@@ -227,6 +227,10 @@ class AdFeedViewModel(
         loadMoreAds()
     }
 
+    fun getAdDetail(adId: Long): AdItem? {
+        return repository.getAdById(adId)
+    }
+
     /** 记录广告曝光事件。 */
     fun trackAdImpression(ad: AdItem) {
         track(ad, "impression")

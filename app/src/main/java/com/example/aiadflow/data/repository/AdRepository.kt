@@ -44,6 +44,10 @@ class AdRepository(
         return tagAds.filter { ad -> ad.matchesKeywords(keywords) }
     }
 
+    fun getAdById(adId: Long): AdItem? {
+        return getCachedAds(null).firstOrNull { it.id == adId }
+    }
+
     private fun normalizeKeywords(query: String): List<String> {
         return query
             .trim()

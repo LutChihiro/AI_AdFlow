@@ -117,9 +117,11 @@ class MainActivity : ComponentActivity() {
                             onRefresh = viewModel::refreshAds,
                             onLoadMore = viewModel::loadMoreAds,
                             onRetryLoadMore = viewModel::retryLoadMoreAds,
-                            onAdClick = { ad ->
-                            viewModel.trackAdClick(ad)
-                            selectedAd = ad
+                            onAdClick = { adId ->
+                                viewModel.getAdDetail(adId)?.let { ad ->
+                                    viewModel.trackAdClick(ad)
+                                    selectedAd = ad
+                                }
                             }
                         )
                     } else {
@@ -144,7 +146,7 @@ private fun HomeScreen(
     onRefresh: () -> Boolean,
     onLoadMore: () -> Unit,
     onRetryLoadMore: () -> Unit,
-    onAdClick: (AdItem) -> Unit
+    onAdClick: (Long) -> Unit
 ) {
     val likedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
     val collectedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
@@ -259,7 +261,7 @@ private fun HomeScreen(
                             collectedOverrides[ad.id] = !(collectedOverrides[ad.id] ?: ad.collected)
                         },
                         onViewClick = {
-                            onAdClick(ad)
+                            onAdClick(ad.id)
                         },
                         onTagClick = onTagSelected
                     )
@@ -1046,7 +1048,9 @@ private fun HomeScreenPreview() {
                     onRefresh = { true },
                     onLoadMore = {},
                     onRetryLoadMore = {},
-                    onAdClick = { selectedAd = it }
+                    onAdClick = { adId ->
+                        selectedAd = PreviewAds.firstOrNull { it.id == adId }
+                    }
                 )
             }
         }
