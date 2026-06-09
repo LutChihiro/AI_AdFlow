@@ -569,6 +569,7 @@ private fun AdCard(
             .fillMaxWidth()
             .clip(AppRadius.Large)
             .background(AppColors.Surface)
+            .clickable(onClick = onViewClick)
             .padding(AppSpacing.Medium),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
     ) {

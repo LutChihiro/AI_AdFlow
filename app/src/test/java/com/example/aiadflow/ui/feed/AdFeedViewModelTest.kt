@@ -154,4 +154,17 @@ class AdFeedViewModelTest {
         assertEquals(2, state.totalExposureCount)
         assertEquals(2, state.exposureCountsByAdId[ad.id])
     }
+
+    @Test
+    fun trackAdClickUpdatesClickStats() {
+        val viewModel = AdFeedViewModel()
+        val ad = viewModel.uiState.value.ads.first()
+
+        viewModel.trackAdClick(ad)
+        viewModel.trackAdClick(ad)
+
+        val state = viewModel.uiState.value
+        assertEquals(2, state.clickCount)
+        assertEquals(2, state.clickCountsByAdId[ad.id])
+    }
 }

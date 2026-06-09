@@ -32,6 +32,8 @@ data class AdFeedUiState(
     val totalExposureCount: Int = 0,
     /** 当前会话内按广告 id 聚合的曝光次数。 */
     val exposureCountsByAdId: Map<Long, Int> = emptyMap(),
+    val clickCount: Int = 0,
+    val clickCountsByAdId: Map<Long, Int> = emptyMap(),
     /** 是否正在加载数据，预留给后续真实接口接入。 */
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
@@ -247,6 +249,14 @@ class AdFeedViewModel(
     /** 记录广告点击事件。 */
     fun trackAdClick(ad: AdItem) {
         track(ad, "click")
+        _uiState.update { current ->
+            current.copy(
+                clickCount = current.clickCount + 1,
+                clickCountsByAdId = current.clickCountsByAdId + (
+                    ad.id to ((current.clickCountsByAdId[ad.id] ?: 0) + 1)
+                )
+            )
+        }
     }
 
     /** 统一封装埋点事件创建逻辑，避免曝光和点击重复组装 TrackEvent。 */
