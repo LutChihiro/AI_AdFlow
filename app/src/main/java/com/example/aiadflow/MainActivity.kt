@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
@@ -47,7 +48,9 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -103,6 +106,7 @@ class MainActivity : ComponentActivity() {
                         onTagSelected = viewModel::selectTag,
                         onClearFilters = viewModel::clearFilters,
                         onRefresh = viewModel::refreshAds,
+                        onLoadMore = viewModel::loadMoreAds,
                         onAdClick = { ad ->
                             viewModel.trackAdClick(ad)
                             selectedAd = ad
@@ -128,10 +132,31 @@ private fun HomeScreen(
     onTagSelected: (String?) -> Unit,
     onClearFilters: () -> Unit,
     onRefresh: () -> Unit,
+    onLoadMore: () -> Unit,
     onAdClick: (AdItem) -> Unit
 ) {
     val likedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
     val collectedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
+    val listState = rememberLazyListState()
+    val shouldLoadMore by remember(uiState.hasMoreAds, uiState.isLoadingMore, uiState.ads.size) {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@derivedStateOf false
+            val totalItems = layoutInfo.totalItemsCount
+
+            uiState.ads.isNotEmpty() &&
+                uiState.hasMoreAds &&
+                !uiState.isLoadingMore &&
+                totalItems > 0 &&
+                lastVisibleIndex >= totalItems - 2
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore) {
+        if (shouldLoadMore) {
+            onLoadMore()
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -142,6 +167,7 @@ private fun HomeScreen(
             onRefresh = onRefresh
         ) {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = AppSpacing.PageHorizontal),
@@ -955,6 +981,7 @@ private fun HomeScreenPreview() {
                         selectedTag = null
                     },
                     onRefresh = {},
+                    onLoadMore = {},
                     onAdClick = { selectedAd = it }
                 )
             }

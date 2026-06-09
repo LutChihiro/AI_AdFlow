@@ -1,14 +1,17 @@
 package com.example.aiadflow.ui.feed
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.Channel
 import com.example.aiadflow.data.model.TrackEvent
 import com.example.aiadflow.data.repository.AdRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
  * 广告信息流页面的 UI 状态。
@@ -32,7 +35,8 @@ data class AdFeedUiState(
     /** 是否正在加载数据，预留给后续真实接口接入。 */
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
-    val hasMoreAds: Boolean = true
+    val hasMoreAds: Boolean = true,
+    val currentPage: Int = 1
 )
 
 /**
@@ -44,12 +48,22 @@ class AdFeedViewModel(
     /** 广告仓库，默认使用本地 mock 数据实现。 */
     private val repository: AdRepository = AdRepository()
 ) : ViewModel() {
+    private companion object {
+        const val PageSize = 6
+        const val LoadMoreDelayMillis = 350L
+    }
+
     /** 可变内部状态，只允许 ViewModel 自己更新。 */
     private val _uiState = MutableStateFlow(
-        AdFeedUiState(
-            channels = repository.getChannels(),
-            ads = repository.getAds()
-        )
+        run {
+            val initialAds = repository.getAds()
+            AdFeedUiState(
+                channels = repository.getChannels(),
+                ads = initialAds.take(PageSize),
+                hasMoreAds = initialAds.size > PageSize,
+                currentPage = 1
+            )
+        }
     )
     /** 暴露给 UI 的只读状态流。 */
     val uiState: StateFlow<AdFeedUiState> = _uiState.asStateFlow()
@@ -64,7 +78,10 @@ class AdFeedViewModel(
 
             current.copy(
                 selectedChannel = nextChannel,
-                ads = repository.getAds(nextChannel, current.searchText, current.selectedTag)
+                ads = repository.getAds(nextChannel, current.searchText, current.selectedTag).take(PageSize),
+                hasMoreAds = repository.getAds(nextChannel, current.searchText, current.selectedTag).size > PageSize,
+                currentPage = 1,
+                isLoadingMore = false
             )
         }
     }
@@ -79,7 +96,10 @@ class AdFeedViewModel(
         _uiState.update { current ->
             current.copy(
                 searchText = text,
-                ads = repository.getAds(current.selectedChannel, text, current.selectedTag)
+                ads = repository.getAds(current.selectedChannel, text, current.selectedTag).take(PageSize),
+                hasMoreAds = repository.getAds(current.selectedChannel, text, current.selectedTag).size > PageSize,
+                currentPage = 1,
+                isLoadingMore = false
             )
         }
     }
@@ -99,7 +119,10 @@ class AdFeedViewModel(
 
             current.copy(
                 selectedTag = nextTag,
-                ads = repository.getAds(current.selectedChannel, current.searchText, nextTag)
+                ads = repository.getAds(current.selectedChannel, current.searchText, nextTag).take(PageSize),
+                hasMoreAds = repository.getAds(current.selectedChannel, current.searchText, nextTag).size > PageSize,
+                currentPage = 1,
+                isLoadingMore = false
             )
         }
     }
@@ -110,7 +133,10 @@ class AdFeedViewModel(
                 selectedChannel = null,
                 searchText = "",
                 selectedTag = null,
-                ads = repository.getAds()
+                ads = repository.getAds().take(PageSize),
+                hasMoreAds = repository.getAds().size > PageSize,
+                currentPage = 1,
+                isLoadingMore = false
             )
         }
     }
@@ -119,8 +145,44 @@ class AdFeedViewModel(
     fun refreshAds() {
         _uiState.update { current ->
             current.copy(
-                ads = repository.getAds(current.selectedChannel, current.searchText, current.selectedTag)
+                ads = repository.getAds(current.selectedChannel, current.searchText, current.selectedTag).take(PageSize),
+                hasMoreAds = repository.getAds(current.selectedChannel, current.searchText, current.selectedTag).size > PageSize,
+                currentPage = 1,
+                isLoadingMore = false
             )
+        }
+    }
+
+    fun loadMoreAds() {
+        val current = _uiState.value
+        if (current.isLoadingMore || !current.hasMoreAds || current.ads.isEmpty()) {
+            return
+        }
+
+        _uiState.update { it.copy(isLoadingMore = true) }
+
+        viewModelScope.launch {
+            delay(LoadMoreDelayMillis)
+            _uiState.update { latest ->
+                if (!latest.isLoadingMore) {
+                    return@update latest
+                }
+
+                val nextPage = latest.currentPage + 1
+                val allAds = repository.getAds(
+                    latest.selectedChannel,
+                    latest.searchText,
+                    latest.selectedTag
+                )
+                val nextAds = allAds.take(nextPage * PageSize)
+
+                latest.copy(
+                    ads = nextAds,
+                    currentPage = nextPage,
+                    hasMoreAds = nextAds.size < allAds.size,
+                    isLoadingMore = false
+                )
+            }
         }
     }
 
