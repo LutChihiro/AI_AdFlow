@@ -1280,7 +1280,7 @@ private fun ImageTextDetailContent(ad: AdItem) {
 @Composable
 private fun VideoDetailContent(ad: AdItem) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)) {
-        DetailMediaBlock(ad = ad, height = AppSpacing.VideoMediaHeight)
+        VideoPlayerArea(ad = ad)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1337,6 +1337,69 @@ private fun VideoDetailContent(ad: AdItem) {
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
             )
         }
+    }
+}
+
+@Composable
+private fun VideoPlayerArea(ad: AdItem) {
+    var isPlaying by remember(ad.id) { mutableStateOf(false) }
+    var isMuted by remember(ad.id) { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(AppSpacing.VideoMediaHeight)
+            .clip(AppRadius.Large)
+            .background(mediaColorFor(ad.type))
+            .padding(AppSpacing.Medium)
+    ) {
+        Text(
+            text = ad.mediaLabel,
+            color = AppColors.OnPrimary,
+            style = MaterialTheme.typography.labelLarge
+        )
+        VideoPlayButton(
+            isPlaying = isPlaying,
+            onClick = { isPlaying = !isPlaying },
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(AppSpacing.PlayButton)
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(end = AppSpacing.VideoMuteButton + AppSpacing.Small),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(AppSpacing.VideoProgressHeight)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.35f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.42f)
+                        .height(AppSpacing.VideoProgressHeight)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.9f))
+                )
+            }
+            Text(
+                text = if (isPlaying) "00:12 / 00:30" else "00:00 / 00:30",
+                color = AppColors.OnPrimary,
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+        VideoMuteButton(
+            isMuted = isMuted,
+            onClick = { isMuted = !isMuted },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .size(AppSpacing.VideoMuteButton)
+        )
     }
 }
 
