@@ -196,6 +196,11 @@ private fun HomeScreen(
                     onQueryChange = onSearchChange
                 )
             }
+            uiState.refreshMessage?.let { message ->
+                item(key = "refresh-message") {
+                    RefreshMessageBar(message = message)
+                }
+            }
             if (uiState.hasActiveFilters()) {
                 item(key = "active-filters") {
                     ActiveFiltersBar(
@@ -242,6 +247,29 @@ private fun HomeScreen(
         }
     }
 }
+}
+
+@Composable
+private fun RefreshMessageBar(message: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(AppRadius.Large)
+            .background(AppColors.Surface)
+            .border(
+                width = AppSpacing.SearchBorderWidth,
+                color = if (message.contains("\u6210\u529f")) AppColors.Primary else AppColors.MediaPlaceholder,
+                shape = AppRadius.Large
+            )
+            .padding(AppSpacing.Medium),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = message,
+            color = if (message.contains("\u6210\u529f")) AppColors.Primary else AppColors.TextSecondary,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
 }
 
 @Composable
@@ -988,6 +1016,7 @@ private fun HomeScreenPreview() {
                         searchText = searchText,
                         selectedTag = selectedTag,
                         ads = visibleAds,
+                        refreshMessage = "\u5237\u65b0\u6210\u529f",
                         isLoadingMore = false,
                         hasMoreAds = false,
                         loadMoreErrorMessage = null

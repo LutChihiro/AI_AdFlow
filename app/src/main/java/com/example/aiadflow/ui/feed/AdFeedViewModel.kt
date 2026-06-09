@@ -34,6 +34,7 @@ data class AdFeedUiState(
     val exposureCountsByAdId: Map<Long, Int> = emptyMap(),
     /** 是否正在加载数据，预留给后续真实接口接入。 */
     val isLoading: Boolean = false,
+    val refreshMessage: String? = null,
     val isLoadingMore: Boolean = false,
     val hasMoreAds: Boolean = true,
     val loadMoreErrorMessage: String? = null,
@@ -149,13 +150,27 @@ class AdFeedViewModel(
     /** 使用当前频道和搜索词重新拉取广告列表。 */
     fun refreshAds() {
         _uiState.update { current ->
-            current.copy(
-                ads = repository.getAds(current.selectedChannel, current.searchText, current.selectedTag).take(PageSize),
-                hasMoreAds = repository.getAds(current.selectedChannel, current.searchText, current.selectedTag).size > PageSize,
-                currentPage = 1,
-                isLoadingMore = false,
-                loadMoreErrorMessage = null
-            )
+            try {
+                val refreshedAds = repository.getAds(
+                    current.selectedChannel,
+                    current.searchText,
+                    current.selectedTag
+                )
+                current.copy(
+                    ads = refreshedAds.take(PageSize),
+                    hasMoreAds = refreshedAds.size > PageSize,
+                    currentPage = 1,
+                    isLoadingMore = false,
+                    loadMoreErrorMessage = null,
+                    refreshMessage = "刷新成功"
+                )
+            } catch (_: Exception) {
+                current.copy(
+                    isLoadingMore = false,
+                    loadMoreErrorMessage = null,
+                    refreshMessage = "刷新失败，请重试"
+                )
+            }
         }
     }
 
