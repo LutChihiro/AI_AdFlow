@@ -29,6 +29,8 @@ data class AdItem(
     val tags: List<String>,
     /** 数据源给出的初始点赞状态，用户临时点击状态不直接修改该模型。 */
     val liked: Boolean = false,
+    val likeCount: Int = 0,
     /** 数据源给出的初始收藏状态，用户临时点击状态不直接修改该模型。 */
-    val collected: Boolean = false
+    val collected: Boolean = false,
+    val collectCount: Int = 0
 )

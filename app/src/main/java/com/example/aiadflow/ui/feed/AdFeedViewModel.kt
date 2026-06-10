@@ -32,6 +32,8 @@ data class AdFeedUiState(
     val clickCountsByAdId: Map<Long, Int> = emptyMap(),
     val likedOverridesByAdId: Map<Long, Boolean> = emptyMap(),
     val collectedOverridesByAdId: Map<Long, Boolean> = emptyMap(),
+    val likeCountsByAdId: Map<Long, Int> = emptyMap(),
+    val collectCountsByAdId: Map<Long, Int> = emptyMap(),
     val showCollectedOnly: Boolean = false,
     val collectedCount: Int = 0,
     val adAiSummariesByAdId: Map<Long, String> = emptyMap(),
@@ -63,6 +65,12 @@ class AdFeedViewModel(
                 ads = initialAds.take(PageSize),
                 likedOverridesByAdId = localState.likedOverridesByAdId,
                 collectedOverridesByAdId = localState.collectedOverridesByAdId,
+                likeCountsByAdId = initialAds.associate { ad ->
+                    ad.id to (localState.likeCountsByAdId[ad.id] ?: ad.effectiveInitialLikeCount())
+                },
+                collectCountsByAdId = initialAds.associate { ad ->
+                    ad.id to (localState.collectCountsByAdId[ad.id] ?: ad.effectiveInitialCollectCount())
+                },
                 collectedCount = initialAds.count { localState.collectedOverridesByAdId[it.id] ?: it.collected },
                 adAiSummariesByAdId = repository.getAdAiSummaries(initialAds.take(PageSize).map(AdItem::id)),
                 hasMoreAds = initialAds.size > PageSize,
@@ -252,8 +260,11 @@ class AdFeedViewModel(
         val ad = repository.getAdById(adId) ?: return
         _uiState.update { current ->
             val currentLiked = current.likedOverridesByAdId[adId] ?: ad.liked
+            val nextLiked = !currentLiked
+            val currentCount = current.likeCountsByAdId[adId] ?: ad.effectiveInitialLikeCount()
             val nextState = current.copy(
-                likedOverridesByAdId = current.likedOverridesByAdId + (adId to !currentLiked)
+                likedOverridesByAdId = current.likedOverridesByAdId + (adId to nextLiked),
+                likeCountsByAdId = current.likeCountsByAdId + (adId to currentCount.adjustCount(nextLiked))
             )
             saveLocalState(nextState)
             nextState
@@ -264,11 +275,14 @@ class AdFeedViewModel(
         val ad = repository.getAdById(adId) ?: return
         _uiState.update { current ->
             val currentCollected = current.collectedOverridesByAdId[adId] ?: ad.collected
-            val nextOverrides = current.collectedOverridesByAdId + (adId to !currentCollected)
+            val nextCollected = !currentCollected
+            val currentCount = current.collectCountsByAdId[adId] ?: ad.effectiveInitialCollectCount()
+            val nextOverrides = current.collectedOverridesByAdId + (adId to nextCollected)
             val nextAds = current.copy(collectedOverridesByAdId = nextOverrides)
                 .filteredAds(collectedOverridesByAdId = nextOverrides)
             val nextState = current.copy(
                 collectedOverridesByAdId = nextOverrides,
+                collectCountsByAdId = current.collectCountsByAdId + (adId to currentCount.adjustCount(nextCollected)),
                 collectedCount = repository.getAds()
                     .count { repositoryAd -> nextOverrides[repositoryAd.id] ?: repositoryAd.collected },
                 ads = nextAds.take(current.currentPage * PageSize),
@@ -369,7 +383,9 @@ class AdFeedViewModel(
         localStateStore.save(
             AdLocalInteractionState(
                 likedOverridesByAdId = state.likedOverridesByAdId,
-                collectedOverridesByAdId = state.collectedOverridesByAdId
+                collectedOverridesByAdId = state.collectedOverridesByAdId,
+                likeCountsByAdId = state.likeCountsByAdId,
+                collectCountsByAdId = state.collectCountsByAdId
             )
         )
     }
@@ -425,5 +441,17 @@ class AdFeedViewModel(
         }
 
         return filter { ad -> collectedOverridesByAdId[ad.id] ?: ad.collected }
+    }
+
+    private fun AdItem.effectiveInitialLikeCount(): Int {
+        return likeCount.coerceAtLeast(if (liked) 1 else 0)
+    }
+
+    private fun AdItem.effectiveInitialCollectCount(): Int {
+        return collectCount.coerceAtLeast(if (collected) 1 else 0)
+    }
+
+    private fun Int.adjustCount(selected: Boolean): Int {
+        return (this + if (selected) 1 else -1).coerceAtLeast(0)
     }
 }

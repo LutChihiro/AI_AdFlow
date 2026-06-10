@@ -67,10 +67,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.AdType
 import com.example.aiadflow.data.model.Channel
@@ -93,10 +96,10 @@ class MainActivity : ComponentActivity() {
             AIAdFlowTheme {
                 val viewModel = remember { AdFeedViewModel() }
                 val uiState by viewModel.uiState.collectAsState()
-                var selectedAd by remember { mutableStateOf<AdItem?>(null) }
+                var selectedAdId by remember { mutableStateOf<Long?>(null) }
 
                 AnimatedContent(
-                    targetState = selectedAd,
+                    targetState = selectedAdId,
                     label = "adDetailTransition",
                     transitionSpec = {
                         val goingToDetail = initialState == null && targetState != null
@@ -108,7 +111,8 @@ class MainActivity : ComponentActivity() {
                                 (slideOutHorizontally { it / 3 } + fadeOut())
                         }
                     }
-                ) { detailAd ->
+                ) { detailAdId ->
+                    val detailAd = detailAdId?.let(viewModel::getAdDetail)
                     if (detailAd == null) {
                         HomeScreen(
                             uiState = uiState,
@@ -116,7 +120,6 @@ class MainActivity : ComponentActivity() {
                             onSearchChange = viewModel::updateSearchText,
                             onTagSelected = viewModel::selectTag,
                             onClearFilters = viewModel::clearFilters,
-                            onCollectedFilterClick = viewModel::toggleCollectedOnly,
                             onRefresh = viewModel::refreshAds,
                             onLoadMore = viewModel::loadMoreAds,
                             onRetryLoadMore = viewModel::retryLoadMoreAds,
@@ -125,14 +128,20 @@ class MainActivity : ComponentActivity() {
                             onAdClick = { adId ->
                                 viewModel.getAdDetail(adId)?.let { ad ->
                                     viewModel.trackAdClick(ad)
-                                    selectedAd = ad
+                                    selectedAdId = ad.id
                                 }
                             }
                         )
                     } else {
                         AdDetailScreen(
                             ad = detailAd,
-                            onBackClick = { selectedAd = null }
+                            liked = uiState.likedOverridesByAdId[detailAd.id] ?: detailAd.liked,
+                            collected = uiState.collectedOverridesByAdId[detailAd.id] ?: detailAd.collected,
+                            likeCount = uiState.likeCountsByAdId[detailAd.id] ?: detailAd.effectiveInitialLikeCount(),
+                            collectCount = uiState.collectCountsByAdId[detailAd.id] ?: detailAd.effectiveInitialCollectCount(),
+                            onLikeClick = { viewModel.toggleLike(detailAd.id) },
+                            onCollectClick = { viewModel.toggleCollect(detailAd.id) },
+                            onBackClick = { selectedAdId = null }
                         )
                     }
                 }
@@ -148,7 +157,6 @@ private fun HomeScreen(
     onSearchChange: (String) -> Unit,
     onTagSelected: (String?) -> Unit,
     onClearFilters: () -> Unit,
-    onCollectedFilterClick: () -> Unit,
     onRefresh: () -> Boolean,
     onLoadMore: () -> Unit,
     onRetryLoadMore: () -> Unit,
@@ -223,11 +231,7 @@ private fun HomeScreen(
                 Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
             }
             item(key = "header") {
-                HeaderBar(
-                    showCollectedOnly = uiState.showCollectedOnly,
-                    collectedCount = uiState.collectedCount,
-                    onCollectedFilterClick = onCollectedFilterClick
-                )
+                HeaderBar()
             }
             item(key = "channel-tabs") {
                 ChannelTabs(
@@ -269,6 +273,8 @@ private fun HomeScreen(
                             },
                         liked = uiState.likedOverridesByAdId[ad.id] ?: ad.liked,
                         collected = uiState.collectedOverridesByAdId[ad.id] ?: ad.collected,
+                        likeCount = uiState.likeCountsByAdId[ad.id] ?: ad.effectiveInitialLikeCount(),
+                        collectCount = uiState.collectCountsByAdId[ad.id] ?: ad.effectiveInitialCollectCount(),
                         selectedTag = uiState.selectedTag,
                         onLikeClick = { onLikeClick(ad.id) },
                         onCollectClick = { onCollectClick(ad.id) },
@@ -351,11 +357,7 @@ private fun LoadMoreFooter(
 }
 
 @Composable
-private fun HeaderBar(
-    showCollectedOnly: Boolean,
-    collectedCount: Int,
-    onCollectedFilterClick: () -> Unit
-) {
+private fun HeaderBar() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -374,16 +376,6 @@ private fun HeaderBar(
                 style = MaterialTheme.typography.bodyMedium
             )
         }
-        ActionChip(
-            text = if (showCollectedOnly) {
-                "\u5df2\u6536\u85cf $collectedCount"
-            } else {
-                "\u6536\u85cf $collectedCount"
-            },
-            selected = showCollectedOnly,
-            onClick = onCollectedFilterClick
-        )
-        Spacer(modifier = Modifier.width(AppSpacing.Small))
         Box(
             modifier = Modifier
                 .size(AppSpacing.IconButton)
@@ -583,6 +575,8 @@ private fun AdCard(
     adAiSummary: String,
     liked: Boolean,
     collected: Boolean,
+    likeCount: Int,
+    collectCount: Int,
     selectedTag: String?,
     onLikeClick: () -> Unit,
     onCollectClick: () -> Unit,
@@ -675,6 +669,8 @@ private fun AdCard(
         AdActionRow(
             liked = liked,
             collected = collected,
+            likeCount = likeCount,
+            collectCount = collectCount,
             onLikeClick = onLikeClick,
             onCollectClick = onCollectClick,
             onViewClick = onViewClick
@@ -933,31 +929,172 @@ private fun AdSummaryHeader(
 private fun AdActionRow(
     liked: Boolean,
     collected: Boolean,
+    likeCount: Int,
+    collectCount: Int,
     onLikeClick: () -> Unit,
     onCollectClick: () -> Unit,
-    onViewClick: () -> Unit
+    onViewClick: () -> Unit,
+    showViewButton: Boolean = true
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)) {
-            ActionChip(
-                text = if (liked) "\u5df2\u70b9\u8d5e" else "\u70b9\u8d5e",
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CountAction(
                 selected = liked,
-                onClick = onLikeClick
+                count = likeCount,
+                onClick = onLikeClick,
+                icon = { selected, color ->
+                    HeartActionIcon(
+                        selected = selected,
+                        color = color,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
             )
-            ActionChip(
-                text = if (collected) "\u5df2\u6536\u85cf" else "\u6536\u85cf",
+            CountAction(
                 selected = collected,
-                onClick = onCollectClick
+                count = collectCount,
+                onClick = onCollectClick,
+                icon = { selected, color ->
+                    StarActionIcon(
+                        selected = selected,
+                        color = color,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
             )
         }
-        ActionChip(
-            text = "\u67e5\u770b",
-            selected = true,
-            onClick = onViewClick
+        if (showViewButton) {
+            ActionChip(
+                text = "\u67e5\u770b",
+                selected = true,
+                onClick = onViewClick
+            )
+        }
+    }
+}
+
+@Composable
+private fun CountAction(
+    selected: Boolean,
+    count: Int,
+    onClick: () -> Unit,
+    icon: @Composable (selected: Boolean, color: Color) -> Unit
+) {
+    val contentColor = if (selected) AppColors.Primary else AppColors.TextSecondary
+
+    Row(
+        modifier = Modifier.clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        icon(selected, contentColor)
+        Text(
+            text = count.toString(),
+            color = contentColor,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 16.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Medium
+            )
+        )
+    }
+}
+
+@Composable
+private fun HeartActionIcon(
+    selected: Boolean,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val path = Path().apply {
+            moveTo(size.width * 0.50f, size.height * 0.82f)
+            cubicTo(
+                size.width * 0.14f,
+                size.height * 0.58f,
+                size.width * 0.08f,
+                size.height * 0.34f,
+                size.width * 0.23f,
+                size.height * 0.20f
+            )
+            cubicTo(
+                size.width * 0.35f,
+                size.height * 0.09f,
+                size.width * 0.47f,
+                size.height * 0.16f,
+                size.width * 0.50f,
+                size.height * 0.28f
+            )
+            cubicTo(
+                size.width * 0.53f,
+                size.height * 0.16f,
+                size.width * 0.65f,
+                size.height * 0.09f,
+                size.width * 0.77f,
+                size.height * 0.20f
+            )
+            cubicTo(
+                size.width * 0.92f,
+                size.height * 0.34f,
+                size.width * 0.86f,
+                size.height * 0.58f,
+                size.width * 0.50f,
+                size.height * 0.82f
+            )
+            close()
+        }
+
+        if (selected) {
+            drawPath(path = path, color = color)
+        }
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = size.minDimension * 0.08f)
+        )
+    }
+}
+
+@Composable
+private fun StarActionIcon(
+    selected: Boolean,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+        val outerRadius = size.minDimension * 0.42f
+        val innerRadius = size.minDimension * 0.18f
+        val path = Path()
+
+        repeat(10) { index ->
+            val radius = if (index % 2 == 0) outerRadius else innerRadius
+            val angle = Math.toRadians((index * 36f - 90f).toDouble())
+            val x = centerX + kotlin.math.cos(angle).toFloat() * radius
+            val y = centerY + kotlin.math.sin(angle).toFloat() * radius
+            if (index == 0) {
+                path.moveTo(x, y)
+            } else {
+                path.lineTo(x, y)
+            }
+        }
+        path.close()
+
+        if (selected) {
+            drawPath(path = path, color = color)
+        }
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = size.minDimension * 0.08f)
         )
     }
 }
@@ -1127,6 +1264,27 @@ private fun activeFilterLabel(uiState: AdFeedUiState): String {
     return filters.joinToString(separator = "  ")
 }
 
+private fun AdItem.effectiveInitialLikeCount(): Int {
+    return likeCount.coerceAtLeast(if (liked) 1 else 0)
+}
+
+private fun AdItem.effectiveInitialCollectCount(): Int {
+    return collectCount.coerceAtLeast(if (collected) 1 else 0)
+}
+
+private fun previewInteractionCount(
+    initialCount: Int,
+    initialSelected: Boolean,
+    overrideSelected: Boolean?
+): Int {
+    val selected = overrideSelected ?: return initialCount
+    return when {
+        selected == initialSelected -> initialCount
+        selected -> initialCount + 1
+        else -> (initialCount - 1).coerceAtLeast(0)
+    }
+}
+
 @Preview(
     name = "Home feed",
     showBackground = true,
@@ -1177,6 +1335,24 @@ private fun HomeScreenPreview() {
             if (ad != null) {
                 AdDetailScreen(
                     ad = ad,
+                    liked = likedOverrides[ad.id] ?: ad.liked,
+                    collected = collectedOverrides[ad.id] ?: ad.collected,
+                    likeCount = previewInteractionCount(
+                        initialCount = ad.effectiveInitialLikeCount(),
+                        initialSelected = ad.liked,
+                        overrideSelected = likedOverrides[ad.id]
+                    ),
+                    collectCount = previewInteractionCount(
+                        initialCount = ad.effectiveInitialCollectCount(),
+                        initialSelected = ad.collected,
+                        overrideSelected = collectedOverrides[ad.id]
+                    ),
+                    onLikeClick = {
+                        likedOverrides[ad.id] = !(likedOverrides[ad.id] ?: ad.liked)
+                    },
+                    onCollectClick = {
+                        collectedOverrides[ad.id] = !(collectedOverrides[ad.id] ?: ad.collected)
+                    },
                     onBackClick = { selectedAd = null }
                 )
             } else {
@@ -1190,6 +1366,20 @@ private fun HomeScreenPreview() {
                         adAiSummariesByAdId = visibleAds.associate { it.id to it.summary },
                         likedOverridesByAdId = likedOverrides,
                         collectedOverridesByAdId = collectedOverrides,
+                        likeCountsByAdId = PreviewAds.associate { ad ->
+                            ad.id to previewInteractionCount(
+                                initialCount = ad.effectiveInitialLikeCount(),
+                                initialSelected = ad.liked,
+                                overrideSelected = likedOverrides[ad.id]
+                            )
+                        },
+                        collectCountsByAdId = PreviewAds.associate { ad ->
+                            ad.id to previewInteractionCount(
+                                initialCount = ad.effectiveInitialCollectCount(),
+                                initialSelected = ad.collected,
+                                overrideSelected = collectedOverrides[ad.id]
+                            )
+                        },
                         showCollectedOnly = showCollectedOnly,
                         collectedCount = PreviewAds.count { ad -> collectedOverrides[ad.id] ?: ad.collected },
                         isLoadingMore = false,
@@ -1212,7 +1402,6 @@ private fun HomeScreenPreview() {
                         selectedTag = null
                         showCollectedOnly = false
                     },
-                    onCollectedFilterClick = { showCollectedOnly = !showCollectedOnly },
                     onRefresh = { true },
                     onLoadMore = {},
                     onRetryLoadMore = {},
@@ -1246,6 +1435,12 @@ private fun AdDetailScreenPreview() {
     AIAdFlowTheme {
         AdDetailScreen(
             ad = PreviewAds.first(),
+            liked = PreviewAds.first().liked,
+            collected = PreviewAds.first().collected,
+            likeCount = PreviewAds.first().effectiveInitialLikeCount(),
+            collectCount = PreviewAds.first().effectiveInitialCollectCount(),
+            onLikeClick = {},
+            onCollectClick = {},
             onBackClick = {}
         )
     }
@@ -1254,6 +1449,12 @@ private fun AdDetailScreenPreview() {
 @Composable
 private fun AdDetailScreen(
     ad: AdItem,
+    liked: Boolean,
+    collected: Boolean,
+    likeCount: Int,
+    collectCount: Int,
+    onLikeClick: () -> Unit,
+    onCollectClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
     Surface(
@@ -1279,6 +1480,18 @@ private fun AdDetailScreen(
                     AdType.Video -> VideoDetailContent(ad = ad)
                     else -> StandardDetailContent(ad = ad)
                 }
+            }
+            item {
+                AdActionRow(
+                    liked = liked,
+                    collected = collected,
+                    likeCount = likeCount,
+                    collectCount = collectCount,
+                    onLikeClick = onLikeClick,
+                    onCollectClick = onCollectClick,
+                    onViewClick = {},
+                    showViewButton = false
+                )
             }
         }
     }
