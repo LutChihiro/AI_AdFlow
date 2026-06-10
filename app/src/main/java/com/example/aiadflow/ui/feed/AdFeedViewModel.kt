@@ -2,6 +2,9 @@ package com.example.aiadflow.ui.feed
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.aiadflow.data.local.AdLocalInteractionState
+import com.example.aiadflow.data.local.AdLocalStateStore
+import com.example.aiadflow.data.local.NoOpAdLocalStateStore
 import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.Channel
 import com.example.aiadflow.data.model.TrackEvent
@@ -53,7 +56,8 @@ data class AdFeedUiState(
  */
 class AdFeedViewModel(
     /** 广告仓库，默认使用本地 mock 数据实现。 */
-    private val repository: AdRepository = AdRepository()
+    private val repository: AdRepository = AdRepository(),
+    private val localStateStore: AdLocalStateStore = NoOpAdLocalStateStore
 ) : ViewModel() {
     private companion object {
         const val PageSize = 6
@@ -64,10 +68,15 @@ class AdFeedViewModel(
     private val _uiState = MutableStateFlow(
         run {
             val initialAds = repository.getAds()
+            val localState = localStateStore.load()
             AdFeedUiState(
                 channels = repository.getChannels(),
                 ads = initialAds.take(PageSize),
-                collectedCount = initialAds.count { it.collected },
+                likedOverridesByAdId = localState.likedOverridesByAdId,
+                collectedOverridesByAdId = localState.collectedOverridesByAdId,
+                collectedCount = initialAds.count { ad ->
+                    localState.collectedOverridesByAdId[ad.id] ?: ad.collected
+                },
                 hasMoreAds = initialAds.size > PageSize,
                 currentPage = 1
             )
@@ -270,9 +279,11 @@ class AdFeedViewModel(
         val ad = repository.getAdById(adId) ?: return
         _uiState.update { current ->
             val currentLiked = current.likedOverridesByAdId[adId] ?: ad.liked
-            current.copy(
+            val nextState = current.copy(
                 likedOverridesByAdId = current.likedOverridesByAdId + (adId to !currentLiked)
             )
+            localStateStore.save(nextState.toLocalInteractionState())
+            nextState
         }
     }
 
@@ -283,7 +294,7 @@ class AdFeedViewModel(
             val nextOverrides = current.collectedOverridesByAdId + (adId to !currentCollected)
             val nextAds = current.copy(collectedOverridesByAdId = nextOverrides)
                 .filteredAds(collectedOverridesByAdId = nextOverrides)
-            current.copy(
+            val nextState = current.copy(
                 collectedOverridesByAdId = nextOverrides,
                 collectedCount = repository.getAds()
                     .filter { repositoryAd -> nextOverrides[repositoryAd.id] ?: repositoryAd.collected }
@@ -292,6 +303,8 @@ class AdFeedViewModel(
                 hasMoreAds = nextAds.size > current.currentPage * PageSize,
                 loadMoreErrorMessage = null
             )
+            localStateStore.save(nextState.toLocalInteractionState())
+            nextState
         }
     }
 
@@ -352,5 +365,12 @@ class AdFeedViewModel(
         }
 
         return filter { ad -> collectedOverridesByAdId[ad.id] ?: ad.collected }
+    }
+
+    private fun AdFeedUiState.toLocalInteractionState(): AdLocalInteractionState {
+        return AdLocalInteractionState(
+            likedOverridesByAdId = likedOverridesByAdId,
+            collectedOverridesByAdId = collectedOverridesByAdId
+        )
     }
 }

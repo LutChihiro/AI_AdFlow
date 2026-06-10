@@ -71,6 +71,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import com.example.aiadflow.data.local.SharedPreferencesAdLocalStateStore
 import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.AdType
 import com.example.aiadflow.data.model.Channel
@@ -91,7 +92,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             AIAdFlowTheme {
-                val viewModel = remember { AdFeedViewModel() }
+                val viewModel = remember {
+                    AdFeedViewModel(
+                        localStateStore = SharedPreferencesAdLocalStateStore(this)
+                    )
+                }
                 val uiState by viewModel.uiState.collectAsState()
                 var selectedAd by remember { mutableStateOf<AdItem?>(null) }
 
