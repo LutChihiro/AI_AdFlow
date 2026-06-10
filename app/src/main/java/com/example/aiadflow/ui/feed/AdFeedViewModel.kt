@@ -7,6 +7,8 @@ import com.example.aiadflow.data.model.Channel
 import com.example.aiadflow.data.model.TrackEvent
 import com.example.aiadflow.data.repository.AdRepository
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +40,10 @@ data class AdFeedUiState(
     val collectedOverridesByAdId: Map<Long, Boolean> = emptyMap(),
     val showCollectedOnly: Boolean = false,
     val collectedCount: Int = 0,
+    val aiSummary: String = "",
+    val aiSummaryAdCount: Int = 0,
+    val isAiSummaryLoading: Boolean = false,
+    val aiSummaryErrorMessage: String? = null,
     /** 是否正在加载数据，预留给后续真实接口接入。 */
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
@@ -60,6 +66,8 @@ class AdFeedViewModel(
         const val LoadMoreDelayMillis = 350L
     }
 
+    private var aiSummaryJob: Job? = null
+
     /** 可变内部状态，只允许 ViewModel 自己更新。 */
     private val _uiState = MutableStateFlow(
         run {
@@ -68,6 +76,9 @@ class AdFeedViewModel(
                 channels = repository.getChannels(),
                 ads = initialAds.take(PageSize),
                 collectedCount = initialAds.count { it.collected },
+                aiSummaryAdCount = initialAds.take(PageSize).size,
+                aiSummary = "\u0041\u0049 \u6458\u8981\u751f\u6210\u4e2d...",
+                isAiSummaryLoading = true,
                 hasMoreAds = initialAds.size > PageSize,
                 currentPage = 1
             )
@@ -75,6 +86,10 @@ class AdFeedViewModel(
     )
     /** 暴露给 UI 的只读状态流。 */
     val uiState: StateFlow<AdFeedUiState> = _uiState.asStateFlow()
+
+    init {
+        requestAiSummary()
+    }
 
     /** 切换频道，并按当前搜索词刷新广告列表。 */
     fun switchChannel(channel: Channel?) {
@@ -84,23 +99,24 @@ class AdFeedViewModel(
                 return@update current
             }
 
+            val filteredAds = current.filteredAds(
+                channel = nextChannel,
+                query = current.searchText,
+                selectedTag = current.selectedTag
+            )
+            val nextAds = filteredAds.take(PageSize)
+
             current.copy(
                 selectedChannel = nextChannel,
-                ads = current.filteredAds(
-                    channel = nextChannel,
-                    query = current.searchText,
-                    selectedTag = current.selectedTag
-                ).take(PageSize),
-                hasMoreAds = current.filteredAds(
-                    channel = nextChannel,
-                    query = current.searchText,
-                    selectedTag = current.selectedTag
-                ).size > PageSize,
+                ads = nextAds,
+                aiSummaryAdCount = nextAds.size,
+                hasMoreAds = filteredAds.size > PageSize,
                 currentPage = 1,
                 isLoadingMore = false,
                 loadMoreErrorMessage = null
             )
         }
+        requestAiSummary()
     }
 
     /** Backward-compatible alias for existing callers. */
@@ -111,15 +127,20 @@ class AdFeedViewModel(
     /** 更新搜索框文本。 */
     fun updateSearchText(text: String) {
         _uiState.update { current ->
+            val filteredAds = current.filteredAds(query = text)
+            val nextAds = filteredAds.take(PageSize)
+
             current.copy(
                 searchText = text,
-                ads = current.filteredAds(query = text).take(PageSize),
-                hasMoreAds = current.filteredAds(query = text).size > PageSize,
+                ads = nextAds,
+                aiSummaryAdCount = nextAds.size,
+                hasMoreAds = filteredAds.size > PageSize,
                 currentPage = 1,
                 isLoadingMore = false,
                 loadMoreErrorMessage = null
             )
         }
+        requestAiSummary()
     }
 
     fun selectTag(tag: String?) {
@@ -135,47 +156,59 @@ class AdFeedViewModel(
                     }
                 }
 
+            val filteredAds = current.filteredAds(selectedTag = nextTag)
+            val nextAds = filteredAds.take(PageSize)
+
             current.copy(
                 selectedTag = nextTag,
-                ads = current.filteredAds(selectedTag = nextTag).take(PageSize),
-                hasMoreAds = current.filteredAds(selectedTag = nextTag).size > PageSize,
+                ads = nextAds,
+                aiSummaryAdCount = nextAds.size,
+                hasMoreAds = filteredAds.size > PageSize,
                 currentPage = 1,
                 isLoadingMore = false,
                 loadMoreErrorMessage = null
             )
         }
+        requestAiSummary()
     }
 
     fun clearFilters() {
         _uiState.update { current ->
+            val nextAds = repository.getAds().take(PageSize)
+
             current.copy(
                 selectedChannel = null,
                 searchText = "",
                 selectedTag = null,
                 showCollectedOnly = false,
-                ads = repository.getAds().take(PageSize),
+                ads = nextAds,
+                aiSummaryAdCount = nextAds.size,
                 hasMoreAds = repository.getAds().size > PageSize,
                 currentPage = 1,
                 isLoadingMore = false,
                 loadMoreErrorMessage = null
             )
         }
+        requestAiSummary()
     }
 
     fun toggleCollectedOnly() {
         _uiState.update { current ->
             val nextShowCollectedOnly = !current.showCollectedOnly
-            val nextAds = current.filteredAds(showCollectedOnly = nextShowCollectedOnly)
+            val filteredAds = current.filteredAds(showCollectedOnly = nextShowCollectedOnly)
+            val nextAds = filteredAds.take(PageSize)
 
             current.copy(
                 showCollectedOnly = nextShowCollectedOnly,
-                ads = nextAds.take(PageSize),
-                hasMoreAds = nextAds.size > PageSize,
+                ads = nextAds,
+                aiSummaryAdCount = nextAds.size,
+                hasMoreAds = filteredAds.size > PageSize,
                 currentPage = 1,
                 isLoadingMore = false,
                 loadMoreErrorMessage = null
             )
         }
+        requestAiSummary()
     }
 
     /** 使用当前频道和搜索词重新拉取广告列表。 */
@@ -193,12 +226,14 @@ class AdFeedViewModel(
                     collectedCount = repository.getAds()
                         .filter { ad -> it.collectedOverridesByAdId[ad.id] ?: ad.collected }
                         .size,
+                    aiSummaryAdCount = refreshedAds.take(PageSize).size,
                     hasMoreAds = refreshedAds.size > PageSize,
                     currentPage = 1,
                     isLoadingMore = false,
                     loadMoreErrorMessage = null
                 )
             }
+            requestAiSummary()
             true
         } catch (_: Exception) {
             _uiState.update {
@@ -243,6 +278,7 @@ class AdFeedViewModel(
                     latest.copy(
                         ads = nextAds,
                         currentPage = nextPage,
+                        aiSummaryAdCount = nextAds.size,
                         hasMoreAds = nextAds.size < allAds.size,
                         isLoadingMore = false,
                         loadMoreErrorMessage = null
@@ -254,6 +290,7 @@ class AdFeedViewModel(
                     )
                 }
             }
+            requestAiSummary()
         }
     }
 
@@ -264,6 +301,10 @@ class AdFeedViewModel(
 
     fun getAdDetail(adId: Long): AdItem? {
         return repository.getAdById(adId)
+    }
+
+    fun refreshAiSummary() {
+        requestAiSummary()
     }
 
     fun toggleLike(adId: Long) {
@@ -289,10 +330,12 @@ class AdFeedViewModel(
                     .filter { repositoryAd -> nextOverrides[repositoryAd.id] ?: repositoryAd.collected }
                     .size,
                 ads = nextAds.take(current.currentPage * PageSize),
+                aiSummaryAdCount = nextAds.take(current.currentPage * PageSize).size,
                 hasMoreAds = nextAds.size > current.currentPage * PageSize,
                 loadMoreErrorMessage = null
             )
         }
+        requestAiSummary()
     }
 
     /** 记录广告曝光事件。 */
@@ -330,6 +373,49 @@ class AdFeedViewModel(
                 eventName = eventName
             )
         )
+    }
+
+    private fun requestAiSummary(ads: List<AdItem> = _uiState.value.ads) {
+        aiSummaryJob?.cancel()
+        val requestAdIds = ads.map { it.id }
+
+        _uiState.update {
+            it.copy(
+                aiSummary = "\u0041\u0049 \u6458\u8981\u751f\u6210\u4e2d...",
+                aiSummaryAdCount = ads.size,
+                isAiSummaryLoading = true,
+                aiSummaryErrorMessage = null
+            )
+        }
+
+        aiSummaryJob = viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching { repository.generateAiSummary(ads) }
+            _uiState.update { current ->
+                if (current.ads.map { it.id } != requestAdIds) {
+                    return@update current
+                }
+
+                result.fold(
+                    onSuccess = { summary ->
+                        current.copy(
+                            aiSummary = summary,
+                            aiSummaryAdCount = ads.size,
+                            isAiSummaryLoading = false,
+                            aiSummaryErrorMessage = null
+                        )
+                    },
+                    onFailure = { error ->
+                        current.copy(
+                            aiSummary = "\u0041\u0049 \u6458\u8981\u751f\u6210\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002",
+                            aiSummaryAdCount = ads.size,
+                            isAiSummaryLoading = false,
+                            aiSummaryErrorMessage = error.message?.takeIf { it.isNotBlank() }
+                                ?: "\u8bf7\u68c0\u67e5 API Key \u548c\u7f51\u7edc\u8fde\u63a5"
+                        )
+                    }
+                )
+            }
+        }
     }
 
     private fun AdFeedUiState.filteredAds(

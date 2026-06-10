@@ -4,6 +4,7 @@ import com.example.aiadflow.data.mock.MockAdProvider
 import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.Channel
 import com.example.aiadflow.data.model.TrackEvent
+import com.example.aiadflow.data.summary.AiSummaryClient
 
 /**
  * 广告数据仓库。
@@ -12,7 +13,8 @@ import com.example.aiadflow.data.model.TrackEvent
  */
 class AdRepository(
     /** 广告数据来源，当前默认使用本地 mock provider。 */
-    private val adProvider: MockAdProvider = MockAdProvider
+    private val adProvider: MockAdProvider = MockAdProvider,
+    private val aiSummaryClient: AiSummaryClient = AiSummaryClient()
 ) {
     private val keywordSeparator = Regex("[\\s,，、]+")
     private val channelCache = mutableMapOf<Channel?, List<AdItem>>()
@@ -47,6 +49,8 @@ class AdRepository(
     fun getAdById(adId: Long): AdItem? {
         return getCachedAds(null).firstOrNull { it.id == adId }
     }
+
+    suspend fun generateAiSummary(ads: List<AdItem>): String = aiSummaryClient.summarize(ads)
 
     private fun normalizeKeywords(query: String): List<String> {
         return query

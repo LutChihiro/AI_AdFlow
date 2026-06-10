@@ -1,6 +1,25 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun configValue(name: String, defaultValue: String = ""): String {
+    return localProperties.getProperty(name)
+        ?: providers.environmentVariable(name).orNull
+        ?: defaultValue
+}
+
+fun buildConfigString(value: String): String {
+    return "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 }
 
 android {
@@ -19,6 +38,13 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "OPENAI_API_KEY", buildConfigString(configValue("OPENAI_API_KEY")))
+        buildConfigField(
+            "String",
+            "AI_SUMMARY_ENDPOINT",
+            buildConfigString(configValue("AI_SUMMARY_ENDPOINT", "https://api.openai.com/v1/chat/completions"))
+        )
+        buildConfigField("String", "AI_SUMMARY_MODEL", buildConfigString(configValue("AI_SUMMARY_MODEL", "gpt-4o-mini")))
     }
 
     buildTypes {
@@ -36,6 +62,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
