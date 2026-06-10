@@ -57,8 +57,6 @@ class AdRepository(
         return getCachedAds(null).firstOrNull { it.id == adId }
     }
 
-    suspend fun generateAiSummary(ads: List<AdItem>): String = aiSummaryClient.summarize(ads)
-
     fun getAdAiSummary(adId: Long): String? {
         synchronized(adSummaryCache) {
             adSummaryCache[adId]?.let { return it }

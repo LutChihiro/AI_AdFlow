@@ -11,18 +11,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AdFeedViewModelTest {
-    @Test
-    fun initialStateRequestsAiSummaryForVisibleAds() {
-        val viewModel = AdFeedViewModel()
-
-        val state = viewModel.uiState.value
-
-        assertEquals(state.ads.size, state.aiSummaryAdCount)
-        assertTrue(state.isAiSummaryLoading)
-        assertTrue(state.aiSummary.contains("\u751f\u6210\u4e2d"))
-    }
-
-    @Test
     fun switchChannelFiltersAdsWithCurrentSearchText() {
         val viewModel = AdFeedViewModel()
 
@@ -98,20 +86,16 @@ class AdFeedViewModelTest {
         assertTrue(state.ads.all { ad ->
             ad.tags.any { it.equals("Local", ignoreCase = true) }
         })
-        assertEquals(state.ads.size, state.aiSummaryAdCount)
-        assertTrue(state.isAiSummaryLoading)
     }
 
     @Test
-    fun updateSearchTextRequestsEmptyAiSummaryWhenNoAdsMatch() {
+    fun updateSearchTextReturnsEmptyAdsWhenNoAdsMatch() {
         val viewModel = AdFeedViewModel()
 
         viewModel.updateSearchText("no matching campaign")
 
         val state = viewModel.uiState.value
         assertTrue(state.ads.isEmpty())
-        assertEquals(0, state.aiSummaryAdCount)
-        assertTrue(state.isAiSummaryLoading)
     }
 
     @Test

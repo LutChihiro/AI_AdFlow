@@ -36,9 +36,6 @@ data class AdFeedUiState(
     val collectedCount: Int = 0,
     val adAiSummariesByAdId: Map<Long, String> = emptyMap(),
     val generatingAdSummaryIds: Set<Long> = emptySet(),
-    val aiSummary: String = "",
-    val isAiSummaryLoading: Boolean = false,
-    val aiSummaryAdCount: Int = 0,
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
     val hasMoreAds: Boolean = true,
@@ -53,7 +50,6 @@ class AdFeedViewModel(
     private companion object {
         const val PageSize = 6
         const val LoadMoreDelayMillis = 350L
-        const val AiSummaryStartDelayMillis = 150L
     }
 
     private val summaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -77,7 +73,6 @@ class AdFeedViewModel(
     val uiState: StateFlow<AdFeedUiState> = _uiState.asStateFlow()
 
     init {
-        requestAiSummary(_uiState.value.ads)
         ensureAdSummaries(_uiState.value.ads)
     }
 
@@ -99,7 +94,6 @@ class AdFeedViewModel(
                 selectedChannel = nextChannel
             )
         }
-        requestAiSummary(_uiState.value.ads)
         ensureAdSummaries(_uiState.value.ads)
     }
 
@@ -116,7 +110,6 @@ class AdFeedViewModel(
                 searchText = text
             )
         }
-        requestAiSummary(_uiState.value.ads)
         ensureAdSummaries(_uiState.value.ads)
     }
 
@@ -136,7 +129,6 @@ class AdFeedViewModel(
                 selectedTag = nextTag
             )
         }
-        requestAiSummary(_uiState.value.ads)
         ensureAdSummaries(_uiState.value.ads)
     }
 
@@ -152,7 +144,6 @@ class AdFeedViewModel(
                 showCollectedOnly = false
             )
         }
-        requestAiSummary(_uiState.value.ads)
         ensureAdSummaries(_uiState.value.ads)
     }
 
@@ -166,7 +157,6 @@ class AdFeedViewModel(
                 showCollectedOnly = nextShowCollectedOnly
             )
         }
-        requestAiSummary(_uiState.value.ads)
         ensureAdSummaries(_uiState.value.ads)
     }
 
@@ -189,7 +179,6 @@ class AdFeedViewModel(
                     loadMoreErrorMessage = null
                 )
             }
-            requestAiSummary(_uiState.value.ads)
             ensureAdSummaries(_uiState.value.ads)
             true
         } catch (_: Exception) {
@@ -335,35 +324,6 @@ class AdFeedViewModel(
     override fun onCleared() {
         summaryScope.cancel()
         super.onCleared()
-    }
-
-    private fun requestAiSummary(ads: List<AdItem>) {
-        _uiState.update {
-            it.copy(
-                aiSummary = "AI 摘要生成中...",
-                isAiSummaryLoading = true,
-                aiSummaryAdCount = ads.size
-            )
-        }
-        summaryScope.launch {
-            delay(AiSummaryStartDelayMillis)
-            val summary = try {
-                repository.generateAiSummary(ads)
-            } catch (_: Exception) {
-                "AI 摘要：生成失败，请稍后重试。"
-            }
-            _uiState.update {
-                if (it.ads.map(AdItem::id) != ads.map(AdItem::id)) {
-                    it
-                } else {
-                    it.copy(
-                        aiSummary = summary,
-                        isAiSummaryLoading = false,
-                        aiSummaryAdCount = ads.size
-                    )
-                }
-            }
-        }
     }
 
     private fun ensureAdSummaries(ads: List<AdItem>) {

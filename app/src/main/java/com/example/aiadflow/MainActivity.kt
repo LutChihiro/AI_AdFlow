@@ -271,7 +271,7 @@ private fun HomeScreen(
                 ) { ad ->
                     AdCard(
                         ad = ad,
-                        aiSummary = uiState.adAiSummariesByAdId[ad.id]
+                        adAiSummary = uiState.adAiSummariesByAdId[ad.id]
                             ?: if (ad.id in uiState.generatingAdSummaryIds) {
                                 "AI 摘要生成中..."
                             } else {
@@ -590,7 +590,7 @@ private fun ActiveFiltersBar(
 @Composable
 private fun AdCard(
     ad: AdItem,
-    aiSummary: String,
+    adAiSummary: String,
     liked: Boolean,
     collected: Boolean,
     selectedTag: String?,
@@ -626,7 +626,7 @@ private fun AdCard(
                     )
                     AdSummaryContent(
                         ad = ad,
-                        aiSummary = aiSummary,
+                        adAiSummary = adAiSummary,
                         modifier = Modifier.weight(1f),
                         showChannelInline = true,
                         selectedTag = selectedTag,
@@ -644,7 +644,7 @@ private fun AdCard(
                 )
                 AdSummaryContent(
                     ad = ad,
-                    aiSummary = aiSummary,
+                    adAiSummary = adAiSummary,
                     selectedTag = selectedTag,
                     onTagClick = onTagClick
                 )
@@ -658,7 +658,7 @@ private fun AdCard(
                         .fillMaxWidth()
                         .height(mediaSpec.height)
                 )
-                AiSummaryBlock(summary = aiSummary)
+                AiSummaryBlock(summary = adAiSummary)
                 TagRow(
                     tags = ad.tags,
                     selectedTag = selectedTag,
@@ -675,7 +675,7 @@ private fun AdCard(
                 )
                 AdSummaryContent(
                     ad = ad,
-                    aiSummary = aiSummary,
+                    adAiSummary = adAiSummary,
                     titleFirst = true,
                     selectedTag = selectedTag,
                     onTagClick = onTagClick
@@ -841,7 +841,7 @@ private fun VideoPlayButton(
 @Composable
 private fun AdSummaryContent(
     ad: AdItem,
-    aiSummary: String,
+    adAiSummary: String,
     modifier: Modifier = Modifier,
     titleFirst: Boolean = false,
     showChannelInline: Boolean = false,
@@ -864,7 +864,7 @@ private fun AdSummaryContent(
         } else {
             AdSummaryHeader(ad = ad, showChannelInline = showChannelInline)
         }
-        AiSummaryBlock(summary = aiSummary)
+        AiSummaryBlock(summary = adAiSummary)
         TagRow(
             tags = ad.tags,
             selectedTag = selectedTag,
