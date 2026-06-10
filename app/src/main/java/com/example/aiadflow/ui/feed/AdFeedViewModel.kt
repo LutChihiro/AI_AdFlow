@@ -2,10 +2,17 @@ package com.example.aiadflow.ui.feed
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.aiadflow.data.local.AdLocalInteractionState
+import com.example.aiadflow.data.local.AdLocalStateStore
+import com.example.aiadflow.data.local.InMemoryAdLocalStateStore
 import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.Channel
 import com.example.aiadflow.data.model.TrackEvent
 import com.example.aiadflow.data.repository.AdRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,24 +20,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/**
- * 广告信息流页面的 UI 状态。
- *
- * ViewModel 通过 StateFlow 暴露该状态，Compose 页面可以订阅并渲染。
- */
 data class AdFeedUiState(
-    /** 当前可展示的频道列表。 */
     val channels: List<Channel> = emptyList(),
-    /** 当前选中的频道。 */
     val selectedChannel: Channel? = null,
-    /** 搜索框文本。 */
     val searchText: String = "",
     val selectedTag: String? = null,
-    /** 根据频道和搜索词过滤后的广告列表。 */
     val ads: List<AdItem> = emptyList(),
-    /** 当前会话内累计记录的广告曝光次数。 */
     val totalExposureCount: Int = 0,
-    /** 当前会话内按广告 id 聚合的曝光次数。 */
     val exposureCountsByAdId: Map<Long, Int> = emptyMap(),
     val clickCount: Int = 0,
     val clickCountsByAdId: Map<Long, Int> = emptyMap(),
@@ -38,7 +34,9 @@ data class AdFeedUiState(
     val collectedOverridesByAdId: Map<Long, Boolean> = emptyMap(),
     val showCollectedOnly: Boolean = false,
     val collectedCount: Int = 0,
-    /** 是否正在加载数据，预留给后续真实接口接入。 */
+    val aiSummary: String = "",
+    val isAiSummaryLoading: Boolean = false,
+    val aiSummaryAdCount: Int = 0,
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
     val hasMoreAds: Boolean = true,
@@ -46,37 +44,39 @@ data class AdFeedUiState(
     val currentPage: Int = 1
 )
 
-/**
- * 广告信息流 ViewModel。
- *
- * 负责维护频道选择、搜索文本、广告列表刷新以及广告行为埋点。
- */
 class AdFeedViewModel(
-    /** 广告仓库，默认使用本地 mock 数据实现。 */
-    private val repository: AdRepository = AdRepository()
+    private val repository: AdRepository = AdRepository(),
+    private val localStateStore: AdLocalStateStore = InMemoryAdLocalStateStore
 ) : ViewModel() {
     private companion object {
         const val PageSize = 6
         const val LoadMoreDelayMillis = 350L
+        const val AiSummaryStartDelayMillis = 150L
     }
 
-    /** 可变内部状态，只允许 ViewModel 自己更新。 */
+    private val summaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     private val _uiState = MutableStateFlow(
         run {
             val initialAds = repository.getAds()
+            val localState = localStateStore.load()
             AdFeedUiState(
                 channels = repository.getChannels(),
                 ads = initialAds.take(PageSize),
-                collectedCount = initialAds.count { it.collected },
+                likedOverridesByAdId = localState.likedOverridesByAdId,
+                collectedOverridesByAdId = localState.collectedOverridesByAdId,
+                collectedCount = initialAds.count { localState.collectedOverridesByAdId[it.id] ?: it.collected },
                 hasMoreAds = initialAds.size > PageSize,
                 currentPage = 1
             )
         }
     )
-    /** 暴露给 UI 的只读状态流。 */
     val uiState: StateFlow<AdFeedUiState> = _uiState.asStateFlow()
 
-    /** 切换频道，并按当前搜索词刷新广告列表。 */
+    init {
+        requestAiSummary(_uiState.value.ads)
+    }
+
     fun switchChannel(channel: Channel?) {
         _uiState.update { current ->
             val nextChannel = channel?.takeIf { it in current.channels }
@@ -84,42 +84,34 @@ class AdFeedViewModel(
                 return@update current
             }
 
-            current.copy(
-                selectedChannel = nextChannel,
-                ads = current.filteredAds(
-                    channel = nextChannel,
-                    query = current.searchText,
-                    selectedTag = current.selectedTag
-                ).take(PageSize),
-                hasMoreAds = current.filteredAds(
-                    channel = nextChannel,
-                    query = current.searchText,
-                    selectedTag = current.selectedTag
-                ).size > PageSize,
-                currentPage = 1,
-                isLoadingMore = false,
-                loadMoreErrorMessage = null
+            val allAds = current.filteredAds(
+                channel = nextChannel,
+                query = current.searchText,
+                selectedTag = current.selectedTag
+            )
+            current.pageReset(
+                ads = allAds.take(PageSize),
+                hasMoreAds = allAds.size > PageSize,
+                selectedChannel = nextChannel
             )
         }
+        requestAiSummary(_uiState.value.ads)
     }
 
-    /** Backward-compatible alias for existing callers. */
     fun selectChannel(channel: Channel?) {
         switchChannel(channel)
     }
 
-    /** 更新搜索框文本。 */
     fun updateSearchText(text: String) {
         _uiState.update { current ->
-            current.copy(
-                searchText = text,
-                ads = current.filteredAds(query = text).take(PageSize),
-                hasMoreAds = current.filteredAds(query = text).size > PageSize,
-                currentPage = 1,
-                isLoadingMore = false,
-                loadMoreErrorMessage = null
+            val allAds = current.filteredAds(query = text)
+            current.pageReset(
+                ads = allAds.take(PageSize),
+                hasMoreAds = allAds.size > PageSize,
+                searchText = text
             )
         }
+        requestAiSummary(_uiState.value.ads)
     }
 
     fun selectTag(tag: String?) {
@@ -128,57 +120,47 @@ class AdFeedViewModel(
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
                 ?.let { selectedTag ->
-                    if (selectedTag.equals(current.selectedTag, ignoreCase = true)) {
-                        null
-                    } else {
-                        selectedTag
-                    }
+                    if (selectedTag.equals(current.selectedTag, ignoreCase = true)) null else selectedTag
                 }
 
-            current.copy(
-                selectedTag = nextTag,
-                ads = current.filteredAds(selectedTag = nextTag).take(PageSize),
-                hasMoreAds = current.filteredAds(selectedTag = nextTag).size > PageSize,
-                currentPage = 1,
-                isLoadingMore = false,
-                loadMoreErrorMessage = null
+            val allAds = current.filteredAds(selectedTag = nextTag)
+            current.pageReset(
+                ads = allAds.take(PageSize),
+                hasMoreAds = allAds.size > PageSize,
+                selectedTag = nextTag
             )
         }
+        requestAiSummary(_uiState.value.ads)
     }
 
     fun clearFilters() {
         _uiState.update { current ->
-            current.copy(
+            val allAds = repository.getAds()
+            current.pageReset(
+                ads = allAds.take(PageSize),
+                hasMoreAds = allAds.size > PageSize,
                 selectedChannel = null,
                 searchText = "",
                 selectedTag = null,
-                showCollectedOnly = false,
-                ads = repository.getAds().take(PageSize),
-                hasMoreAds = repository.getAds().size > PageSize,
-                currentPage = 1,
-                isLoadingMore = false,
-                loadMoreErrorMessage = null
+                showCollectedOnly = false
             )
         }
+        requestAiSummary(_uiState.value.ads)
     }
 
     fun toggleCollectedOnly() {
         _uiState.update { current ->
             val nextShowCollectedOnly = !current.showCollectedOnly
-            val nextAds = current.filteredAds(showCollectedOnly = nextShowCollectedOnly)
-
-            current.copy(
-                showCollectedOnly = nextShowCollectedOnly,
-                ads = nextAds.take(PageSize),
-                hasMoreAds = nextAds.size > PageSize,
-                currentPage = 1,
-                isLoadingMore = false,
-                loadMoreErrorMessage = null
+            val allAds = current.filteredAds(showCollectedOnly = nextShowCollectedOnly)
+            current.pageReset(
+                ads = allAds.take(PageSize),
+                hasMoreAds = allAds.size > PageSize,
+                showCollectedOnly = nextShowCollectedOnly
             )
         }
+        requestAiSummary(_uiState.value.ads)
     }
 
-    /** 使用当前频道和搜索词重新拉取广告列表。 */
     fun refreshAds(): Boolean {
         val current = _uiState.value
         return try {
@@ -191,14 +173,14 @@ class AdFeedViewModel(
                 it.copy(
                     ads = refreshedAds.take(PageSize),
                     collectedCount = repository.getAds()
-                        .filter { ad -> it.collectedOverridesByAdId[ad.id] ?: ad.collected }
-                        .size,
+                        .count { ad -> it.collectedOverridesByAdId[ad.id] ?: ad.collected },
                     hasMoreAds = refreshedAds.size > PageSize,
                     currentPage = 1,
                     isLoadingMore = false,
                     loadMoreErrorMessage = null
                 )
             }
+            requestAiSummary(_uiState.value.ads)
             true
         } catch (_: Exception) {
             _uiState.update {
@@ -270,9 +252,11 @@ class AdFeedViewModel(
         val ad = repository.getAdById(adId) ?: return
         _uiState.update { current ->
             val currentLiked = current.likedOverridesByAdId[adId] ?: ad.liked
-            current.copy(
+            val nextState = current.copy(
                 likedOverridesByAdId = current.likedOverridesByAdId + (adId to !currentLiked)
             )
+            saveLocalState(nextState)
+            nextState
         }
     }
 
@@ -283,19 +267,35 @@ class AdFeedViewModel(
             val nextOverrides = current.collectedOverridesByAdId + (adId to !currentCollected)
             val nextAds = current.copy(collectedOverridesByAdId = nextOverrides)
                 .filteredAds(collectedOverridesByAdId = nextOverrides)
-            current.copy(
+            val nextState = current.copy(
                 collectedOverridesByAdId = nextOverrides,
                 collectedCount = repository.getAds()
-                    .filter { repositoryAd -> nextOverrides[repositoryAd.id] ?: repositoryAd.collected }
-                    .size,
+                    .count { repositoryAd -> nextOverrides[repositoryAd.id] ?: repositoryAd.collected },
                 ads = nextAds.take(current.currentPage * PageSize),
                 hasMoreAds = nextAds.size > current.currentPage * PageSize,
                 loadMoreErrorMessage = null
             )
+            saveLocalState(nextState)
+            nextState
         }
     }
 
-    /** 记录广告曝光事件。 */
+    fun shareAd(adId: Long): String? {
+        val ad = repository.getAdById(adId) ?: return null
+        track(ad, "share")
+        return buildString {
+            append(ad.brandName)
+            append(" - ")
+            append(ad.title)
+            append('\n')
+            append(ad.summary)
+            if (ad.tags.isNotEmpty()) {
+                append('\n')
+                append(ad.tags.joinToString(separator = " ") { "#$it" })
+            }
+        }
+    }
+
     fun trackAdImpression(ad: AdItem) {
         track(ad, "impression")
         _uiState.update { current ->
@@ -308,7 +308,6 @@ class AdFeedViewModel(
         }
     }
 
-    /** 记录广告点击事件。 */
     fun trackAdClick(ad: AdItem) {
         track(ad, "click")
         _uiState.update { current ->
@@ -321,7 +320,49 @@ class AdFeedViewModel(
         }
     }
 
-    /** 统一封装埋点事件创建逻辑，避免曝光和点击重复组装 TrackEvent。 */
+    override fun onCleared() {
+        summaryScope.cancel()
+        super.onCleared()
+    }
+
+    private fun requestAiSummary(ads: List<AdItem>) {
+        _uiState.update {
+            it.copy(
+                aiSummary = "AI 摘要生成中...",
+                isAiSummaryLoading = true,
+                aiSummaryAdCount = ads.size
+            )
+        }
+        summaryScope.launch {
+            delay(AiSummaryStartDelayMillis)
+            val summary = try {
+                repository.generateAiSummary(ads)
+            } catch (_: Exception) {
+                "AI 摘要：生成失败，请稍后重试。"
+            }
+            _uiState.update {
+                if (it.ads.map(AdItem::id) != ads.map(AdItem::id)) {
+                    it
+                } else {
+                    it.copy(
+                        aiSummary = summary,
+                        isAiSummaryLoading = false,
+                        aiSummaryAdCount = ads.size
+                    )
+                }
+            }
+        }
+    }
+
+    private fun saveLocalState(state: AdFeedUiState) {
+        localStateStore.save(
+            AdLocalInteractionState(
+                likedOverridesByAdId = state.likedOverridesByAdId,
+                collectedOverridesByAdId = state.collectedOverridesByAdId
+            )
+        )
+    }
+
     private fun track(ad: AdItem, eventName: String) {
         repository.track(
             TrackEvent(
@@ -329,6 +370,27 @@ class AdFeedViewModel(
                 channel = ad.channel,
                 eventName = eventName
             )
+        )
+    }
+
+    private fun AdFeedUiState.pageReset(
+        ads: List<AdItem>,
+        hasMoreAds: Boolean,
+        selectedChannel: Channel? = this.selectedChannel,
+        searchText: String = this.searchText,
+        selectedTag: String? = this.selectedTag,
+        showCollectedOnly: Boolean = this.showCollectedOnly
+    ): AdFeedUiState {
+        return copy(
+            selectedChannel = selectedChannel,
+            searchText = searchText,
+            selectedTag = selectedTag,
+            showCollectedOnly = showCollectedOnly,
+            ads = ads,
+            hasMoreAds = hasMoreAds,
+            currentPage = 1,
+            isLoadingMore = false,
+            loadMoreErrorMessage = null
         )
     }
 

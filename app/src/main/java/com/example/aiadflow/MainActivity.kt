@@ -639,13 +639,7 @@ private fun AdCard(
                         .fillMaxWidth()
                         .height(mediaSpec.height)
                 )
-                Text(
-                    text = ad.summary,
-                    color = AppColors.TextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                AiSummaryBlock(summary = ad.summary)
                 TagRow(
                     tags = ad.tags,
                     selectedTag = selectedTag,
@@ -849,17 +843,39 @@ private fun AdSummaryContent(
         } else {
             AdSummaryHeader(ad = ad, showChannelInline = showChannelInline)
         }
-        Text(
-            text = ad.summary,
-            color = AppColors.TextSecondary,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        AiSummaryBlock(summary = ad.summary)
         TagRow(
             tags = ad.tags,
             selectedTag = selectedTag,
             onTagClick = onTagClick
+        )
+    }
+}
+
+@Composable
+private fun AiSummaryBlock(
+    summary: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(AppRadius.Medium)
+            .background(AppColors.PageBackground)
+            .padding(AppSpacing.Small),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.TagVertical)
+    ) {
+        Text(
+            text = "AI 摘要",
+            color = AppColors.Primary,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+        )
+        Text(
+            text = summary,
+            color = AppColors.TextSecondary,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
