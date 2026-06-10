@@ -1,6 +1,9 @@
 package com.example.aiadflow.data.repository
 
 import com.example.aiadflow.data.model.Channel
+import com.example.aiadflow.data.summary.FileBackedAdSummaryDatabase
+import com.example.aiadflow.data.summary.MockAdSummaryDatabase
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -114,6 +117,7 @@ class AdRepositoryTest {
 
     @Test
     fun adAiSummaryCachePersistsAcrossRepositoryInstances() {
+        MockAdSummaryDatabase.clear()
         val firstRepository = AdRepository()
         val secondRepository = AdRepository()
 
@@ -124,5 +128,36 @@ class AdRepositoryTest {
             mapOf(6L to "Generated summary for ad 6"),
             secondRepository.getAdAiSummaries(listOf(6L, -1L))
         )
+    }
+
+    @Test
+    fun adAiSummaryFallsBackToDatabaseAfterMemoryCacheIsCleared() {
+        MockAdSummaryDatabase.clear()
+        val repository = AdRepository()
+
+        repository.saveAdAiSummary(6L, "Persisted summary for ad 6")
+        repository.syncAdAiSummaryCacheToDatabase(listOf(6L))
+        repository.clearAdAiSummaryMemoryCache()
+
+        assertEquals("Persisted summary for ad 6", repository.getAdAiSummary(6L))
+        assertEquals(
+            mapOf(6L to "Persisted summary for ad 6"),
+            repository.getAdAiSummaries(listOf(6L))
+        )
+    }
+
+    @Test
+    fun fileBackedAdSummaryDatabasePersistsAcrossRepositoryRestart() {
+        val file = File.createTempFile("aiadflow-summary", ".properties").apply { delete() }
+        val repository = AdRepository(adSummaryDatabase = FileBackedAdSummaryDatabase(file))
+
+        repository.saveAdAiSummary(6L, "File-backed summary for ad 6")
+        repository.syncAdAiSummaryCacheToDatabase(listOf(6L))
+        repository.clearAdAiSummaryMemoryCache()
+
+        val restartedRepository = AdRepository(adSummaryDatabase = FileBackedAdSummaryDatabase(file))
+        assertEquals("File-backed summary for ad 6", restartedRepository.getAdAiSummary(6L))
+
+        file.delete()
     }
 }

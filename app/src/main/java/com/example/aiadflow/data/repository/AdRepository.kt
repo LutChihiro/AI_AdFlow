@@ -4,7 +4,9 @@ import com.example.aiadflow.data.mock.MockAdProvider
 import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.Channel
 import com.example.aiadflow.data.model.TrackEvent
+import com.example.aiadflow.data.summary.AdSummaryDatabase
 import com.example.aiadflow.data.summary.AiSummaryClient
+import com.example.aiadflow.data.summary.MockAdSummaryDatabase
 
 /**
  * 广告数据仓库。
@@ -14,7 +16,8 @@ import com.example.aiadflow.data.summary.AiSummaryClient
 class AdRepository(
     /** 广告数据来源，当前默认使用本地 mock provider。 */
     private val adProvider: MockAdProvider = MockAdProvider,
-    private val aiSummaryClient: AiSummaryClient = AiSummaryClient()
+    private val aiSummaryClient: AiSummaryClient = AiSummaryClient(),
+    private val adSummaryDatabase: AdSummaryDatabase = MockAdSummaryDatabase
 ) {
     private companion object {
         val adSummaryCache = mutableMapOf<Long, String>()
@@ -56,17 +59,56 @@ class AdRepository(
 
     suspend fun generateAiSummary(ads: List<AdItem>): String = aiSummaryClient.summarize(ads)
 
-    fun getAdAiSummary(adId: Long): String? = synchronized(adSummaryCache) {
-        adSummaryCache[adId]
+    fun getAdAiSummary(adId: Long): String? {
+        synchronized(adSummaryCache) {
+            adSummaryCache[adId]?.let { return it }
+        }
+
+        val persistedSummary = adSummaryDatabase.getSummary(adId) ?: return null
+        synchronized(adSummaryCache) {
+            adSummaryCache[adId] = persistedSummary
+        }
+        return persistedSummary
     }
 
-    fun getAdAiSummaries(adIds: Collection<Long>): Map<Long, String> = synchronized(adSummaryCache) {
-        adIds.mapNotNull { adId -> adSummaryCache[adId]?.let { adId to it } }.toMap()
+    fun getAdAiSummaries(adIds: Collection<Long>): Map<Long, String> {
+        val cachedSummaries = synchronized(adSummaryCache) {
+            adIds.mapNotNull { adId -> adSummaryCache[adId]?.let { adId to it } }.toMap()
+        }
+        val missingIds = adIds.filterNot { it in cachedSummaries }
+        if (missingIds.isEmpty()) {
+            return cachedSummaries
+        }
+
+        val persistedSummaries = adSummaryDatabase.getSummaries(missingIds)
+        if (persistedSummaries.isNotEmpty()) {
+            synchronized(adSummaryCache) {
+                adSummaryCache.putAll(persistedSummaries)
+            }
+        }
+        return cachedSummaries + persistedSummaries
     }
 
     fun saveAdAiSummary(adId: Long, summary: String) {
         synchronized(adSummaryCache) {
             adSummaryCache[adId] = summary
+        }
+    }
+
+    fun syncAdAiSummaryCacheToDatabase(adIds: Collection<Long>? = null) {
+        val summariesToPersist = synchronized(adSummaryCache) {
+            if (adIds == null) {
+                adSummaryCache.toMap()
+            } else {
+                adIds.mapNotNull { adId -> adSummaryCache[adId]?.let { adId to it } }.toMap()
+            }
+        }
+        adSummaryDatabase.upsertSummaries(summariesToPersist)
+    }
+
+    fun clearAdAiSummaryMemoryCache() {
+        synchronized(adSummaryCache) {
+            adSummaryCache.clear()
         }
     }
 

@@ -394,6 +394,7 @@ class AdFeedViewModel(
                     "AI 摘要：生成失败，请稍后重试。"
                 }
                 repository.saveAdAiSummary(ad.id, summary)
+                repository.syncAdAiSummaryCacheToDatabase(listOf(ad.id))
                 _uiState.update { current ->
                     current.copy(
                         adAiSummariesByAdId = current.adAiSummariesByAdId + (ad.id to summary),
