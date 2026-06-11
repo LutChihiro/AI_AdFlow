@@ -18,6 +18,13 @@ fun configValue(name: String, defaultValue: String = ""): String {
         ?: defaultValue
 }
 
+fun configValue(vararg names: String, defaultValue: String = ""): String {
+    return names.firstNotNullOfOrNull { name ->
+        localProperties.getProperty(name)
+            ?: providers.environmentVariable(name).orNull
+    } ?: defaultValue
+}
+
 fun buildConfigString(value: String): String {
     return "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 }
@@ -41,10 +48,20 @@ android {
         buildConfigField("String", "OPENAI_API_KEY", buildConfigString(configValue("OPENAI_API_KEY")))
         buildConfigField(
             "String",
-            "AI_SUMMARY_ENDPOINT",
-            buildConfigString(configValue("AI_SUMMARY_ENDPOINT", "https://api.openai.com/v1/chat/completions"))
+            "AI_SUMMARY_API_KEY",
+            buildConfigString(configValue("AI_SUMMARY_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY"))
         )
-        buildConfigField("String", "AI_SUMMARY_MODEL", buildConfigString(configValue("AI_SUMMARY_MODEL", "gpt-4o-mini")))
+        buildConfigField(
+            "String",
+            "AI_SUMMARY_ENDPOINT",
+            buildConfigString(
+                configValue(
+                    "AI_SUMMARY_ENDPOINT",
+                    defaultValue = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+                )
+            )
+        )
+        buildConfigField("String", "AI_SUMMARY_MODEL", buildConfigString(configValue("AI_SUMMARY_MODEL", "qwen-plus")))
     }
 
     buildTypes {

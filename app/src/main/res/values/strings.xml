@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">AIAdFlow</string>
+    <string name="share_ad_title">分享广告</string>
+    <string name="share_ad_unavailable">当前设备没有可用的分享应用</string>
 </resources>

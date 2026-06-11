@@ -1,6 +1,10 @@
 package com.example.aiadflow
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -65,9 +69,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -88,6 +96,20 @@ import kotlinx.coroutines.launch
 
 private const val RefreshSnackbarVisibleMillis = 1200L
 
+private fun shareText(context: Context, text: String) {
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    val chooser = Intent.createChooser(sendIntent, context.getString(R.string.share_ad_title))
+
+    try {
+        context.startActivity(chooser)
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, context.getString(R.string.share_ad_unavailable), Toast.LENGTH_SHORT).show()
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,6 +119,12 @@ class MainActivity : ComponentActivity() {
                 val viewModel = remember { AdFeedViewModel() }
                 val uiState by viewModel.uiState.collectAsState()
                 var selectedAdId by remember { mutableStateOf<Long?>(null) }
+                val context = LocalContext.current
+                val shareAd: (Long) -> Unit = { adId ->
+                    viewModel.shareAd(adId)?.let { text ->
+                        shareText(context, text)
+                    }
+                }
 
                 AnimatedContent(
                     targetState = selectedAdId,
@@ -125,6 +153,7 @@ class MainActivity : ComponentActivity() {
                             onRetryLoadMore = viewModel::retryLoadMoreAds,
                             onLikeClick = viewModel::toggleLike,
                             onCollectClick = viewModel::toggleCollect,
+                            onShareClick = shareAd,
                             onAdClick = { adId ->
                                 viewModel.getAdDetail(adId)?.let { ad ->
                                     viewModel.trackAdClick(ad)
@@ -141,6 +170,7 @@ class MainActivity : ComponentActivity() {
                             collectCount = uiState.collectCountsByAdId[detailAd.id] ?: detailAd.effectiveInitialCollectCount(),
                             onLikeClick = { viewModel.toggleLike(detailAd.id) },
                             onCollectClick = { viewModel.toggleCollect(detailAd.id) },
+                            onShareClick = { shareAd(detailAd.id) },
                             onBackClick = { selectedAdId = null }
                         )
                     }
@@ -162,6 +192,7 @@ private fun HomeScreen(
     onRetryLoadMore: () -> Unit,
     onLikeClick: (Long) -> Unit,
     onCollectClick: (Long) -> Unit,
+    onShareClick: (Long) -> Unit,
     onAdClick: (Long) -> Unit
 ) {
     val listState = rememberLazyListState()
@@ -278,6 +309,7 @@ private fun HomeScreen(
                         selectedTag = uiState.selectedTag,
                         onLikeClick = { onLikeClick(ad.id) },
                         onCollectClick = { onCollectClick(ad.id) },
+                        onShareClick = { onShareClick(ad.id) },
                         onViewClick = {
                             onAdClick(ad.id)
                         },
@@ -580,6 +612,7 @@ private fun AdCard(
     selectedTag: String?,
     onLikeClick: () -> Unit,
     onCollectClick: () -> Unit,
+    onShareClick: () -> Unit,
     onViewClick: () -> Unit,
     onTagClick: (String) -> Unit
 ) {
@@ -673,6 +706,7 @@ private fun AdCard(
             collectCount = collectCount,
             onLikeClick = onLikeClick,
             onCollectClick = onCollectClick,
+            onShareClick = onShareClick,
             onViewClick = onViewClick
         )
     }
@@ -933,6 +967,7 @@ private fun AdActionRow(
     collectCount: Int,
     onLikeClick: () -> Unit,
     onCollectClick: () -> Unit,
+    onShareClick: () -> Unit,
     onViewClick: () -> Unit,
     showViewButton: Boolean = true
 ) {
@@ -969,6 +1004,15 @@ private fun AdActionRow(
                     )
                 }
             )
+            IconAction(
+                contentDescription = "\u5206\u4eab",
+                onClick = onShareClick
+            ) { color ->
+                ShareActionIcon(
+                    color = color,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
         if (showViewButton) {
             ActionChip(
@@ -977,6 +1021,23 @@ private fun AdActionRow(
                 onClick = onViewClick
             )
         }
+    }
+}
+
+@Composable
+private fun IconAction(
+    contentDescription: String,
+    onClick: () -> Unit,
+    icon: @Composable (color: Color) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+            .semantics { this.contentDescription = contentDescription },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        icon(AppColors.TextSecondary)
     }
 }
 
@@ -1004,6 +1065,26 @@ private fun CountAction(
                 fontWeight = FontWeight.Medium
             )
         )
+    }
+}
+
+@Composable
+private fun ShareActionIcon(
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val strokeWidth = size.minDimension * 0.08f
+        val start = Offset(size.width * 0.24f, size.height * 0.56f)
+        val top = Offset(size.width * 0.74f, size.height * 0.24f)
+        val bottom = Offset(size.width * 0.74f, size.height * 0.76f)
+        val nodeRadius = size.minDimension * 0.10f
+
+        drawLine(color = color, start = start, end = top, strokeWidth = strokeWidth)
+        drawLine(color = color, start = start, end = bottom, strokeWidth = strokeWidth)
+        drawCircle(color = color, radius = nodeRadius, center = start, style = Stroke(width = strokeWidth))
+        drawCircle(color = color, radius = nodeRadius, center = top, style = Stroke(width = strokeWidth))
+        drawCircle(color = color, radius = nodeRadius, center = bottom, style = Stroke(width = strokeWidth))
     }
 }
 
@@ -1353,6 +1434,7 @@ private fun HomeScreenPreview() {
                     onCollectClick = {
                         collectedOverrides[ad.id] = !(collectedOverrides[ad.id] ?: ad.collected)
                     },
+                    onShareClick = {},
                     onBackClick = { selectedAd = null }
                 )
             } else {
@@ -1415,6 +1497,7 @@ private fun HomeScreenPreview() {
                             collectedOverrides[adId] = !(collectedOverrides[adId] ?: ad.collected)
                         }
                     },
+                    onShareClick = {},
                     onAdClick = { adId ->
                         selectedAd = PreviewAds.firstOrNull { it.id == adId }
                     }
@@ -1441,6 +1524,7 @@ private fun AdDetailScreenPreview() {
             collectCount = PreviewAds.first().effectiveInitialCollectCount(),
             onLikeClick = {},
             onCollectClick = {},
+            onShareClick = {},
             onBackClick = {}
         )
     }
@@ -1455,6 +1539,7 @@ private fun AdDetailScreen(
     collectCount: Int,
     onLikeClick: () -> Unit,
     onCollectClick: () -> Unit,
+    onShareClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
     Surface(
@@ -1489,6 +1574,7 @@ private fun AdDetailScreen(
                     collectCount = collectCount,
                     onLikeClick = onLikeClick,
                     onCollectClick = onCollectClick,
+                    onShareClick = onShareClick,
                     onViewClick = {},
                     showViewButton = false
                 )
