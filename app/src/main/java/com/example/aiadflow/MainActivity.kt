@@ -45,6 +45,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -70,6 +72,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -77,6 +80,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -146,6 +150,7 @@ class MainActivity : ComponentActivity() {
                             uiState = uiState,
                             onChannelSelected = viewModel::switchChannel,
                             onSearchChange = viewModel::updateSearchText,
+                            onSearchSubmit = viewModel::submitSearch,
                             onTagSelected = viewModel::selectTag,
                             onClearFilters = viewModel::clearFilters,
                             onRefresh = viewModel::refreshAds,
@@ -187,6 +192,7 @@ private fun HomeScreen(
     uiState: AdFeedUiState,
     onChannelSelected: (Channel?) -> Unit,
     onSearchChange: (String) -> Unit,
+    onSearchSubmit: () -> Unit,
     onTagSelected: (String?) -> Unit,
     onClearFilters: () -> Unit,
     onRefresh: () -> Boolean,
@@ -276,7 +282,16 @@ private fun HomeScreen(
             item(key = "search-bar") {
                 SearchBar(
                     query = uiState.searchText,
-                    onQueryChange = onSearchChange
+                    isSearching = uiState.isAiSearchUnderstanding,
+                    onQueryChange = onSearchChange,
+                    onSearchSubmit = onSearchSubmit
+                )
+            }
+            item(key = "ai-search-panel") {
+                AiSearchPanel(
+                    uiState = uiState,
+                    onSuggestedQueryClick = onSearchChange,
+                    onSuggestedTagClick = { tag -> onSearchChange(tag) }
                 )
             }
             if (uiState.hasActiveFilters()) {
@@ -289,7 +304,10 @@ private fun HomeScreen(
             }
             if (uiState.ads.isEmpty()) {
                 item(key = "empty-feed") {
-                    EmptyFeed(showCollectedOnly = uiState.showCollectedOnly)
+                    EmptyFeed(
+                        showCollectedOnly = uiState.showCollectedOnly,
+                        hasSearchQuery = uiState.searchText.isNotBlank()
+                    )
                 }
             } else {
                 items(
@@ -513,14 +531,24 @@ private fun ChannelTabChip(
 @Composable
 private fun SearchBar(
     query: String,
-    onQueryChange: (String) -> Unit
+    isSearching: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSearchSubmit: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(AppSpacing.SearchHeight)
             .clip(AppRadius.Large)
-            .background(AppColors.Surface)
+            .background(
+                Brush.horizontalGradient(
+                    listOf(
+                        Color(0xFFFFFFFF),
+                        Color(0xFFEFF6FF),
+                        Color(0xFFF8F3FF)
+                    )
+                )
+            )
             .border(
                 width = AppSpacing.SearchBorderWidth,
                 color = if (query.isBlank()) AppColors.MediaPlaceholder else AppColors.Primary,
@@ -531,7 +559,7 @@ private fun SearchBar(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)
     ) {
         Text(
-            text = "\u641c",
+            text = "AI",
             color = if (query.isBlank()) AppColors.TextMuted else AppColors.Primary,
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
         )
@@ -547,10 +575,12 @@ private fun SearchBar(
             modifier = Modifier.weight(1f),
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = AppColors.TextPrimary),
             singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSearchSubmit() }),
             decorationBox = { innerTextField ->
                 if (query.isBlank()) {
                     Text(
-                        text = "\u641c\u7d22\u5e7f\u544a\u3001\u54c1\u724c\u3001\u6807\u7b7e",
+                        text = "直接描述你想找的内容",
                         color = AppColors.TextMuted,
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -574,6 +604,179 @@ private fun SearchBar(
                 )
             }
         }
+        Box(
+            modifier = Modifier
+                .height(34.dp)
+                .clip(AppRadius.Full)
+                .background(if (query.isBlank()) AppColors.PageBackground else AppColors.Primary)
+                .clickable(enabled = query.isNotBlank()) { onSearchSubmit() }
+                .padding(horizontal = AppSpacing.Medium),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isSearching) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(AppSpacing.LoadMoreIndicatorSize),
+                    strokeWidth = AppSpacing.LoadMoreIndicatorStroke,
+                    color = if (query.isBlank()) AppColors.TextMuted else AppColors.OnPrimary
+                )
+            } else {
+                Text(
+                    text = "搜索",
+                    color = if (query.isBlank()) AppColors.TextMuted else AppColors.OnPrimary,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AiSearchPanel(
+    uiState: AdFeedUiState,
+    onSuggestedQueryClick: (String) -> Unit,
+    onSuggestedTagClick: (String) -> Unit
+) {
+    val hasQuery = uiState.searchText.isNotBlank()
+    val panelBackground = if (hasQuery) Color(0xFFFFFFFF) else Color(0xFFF9FBFF)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(AppRadius.Large)
+            .background(panelBackground)
+            .border(
+                width = AppSpacing.SearchBorderWidth,
+                color = if (hasQuery) Color(0xFFD7E3F8) else AppColors.MediaPlaceholder,
+                shape = AppRadius.Large
+            )
+            .padding(AppSpacing.Medium),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+    ) {
+        if (!hasQuery) {
+            Text(
+                text = "可以像聊天一样搜索广告内容",
+                color = AppColors.TextPrimary,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+            Text(
+                text = "试试：适合学生党的 AI 工具、最近的运动健身广告、低价咖啡优惠",
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+            ) {
+                listOf(
+                    "适合学生党的 AI 工具",
+                    "数码类的视频广告",
+                    "低价咖啡优惠"
+                ).forEach { query ->
+                    AiSuggestionChip(
+                        text = query,
+                        selected = false,
+                        onClick = { onSuggestedQueryClick(query) }
+                    )
+                }
+            }
+            return@Column
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFEFF6FF)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "AI",
+                    color = AppColors.Primary,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+            Text(
+                text = if (uiState.isAiSearchUnderstanding) {
+                    "AI 正在理解你的需求..."
+                } else {
+                    "AI 理解你想寻找："
+                },
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            if (uiState.isAiSearchUnderstanding) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(AppSpacing.LoadMoreIndicatorSize),
+                    strokeWidth = AppSpacing.LoadMoreIndicatorStroke,
+                    color = AppColors.Primary
+                )
+            }
+        }
+
+        if (!uiState.isAiSearchUnderstanding) {
+            Text(
+                text = uiState.aiSearchUnderstanding.ifBlank { uiState.searchText.trim() },
+                color = AppColors.TextPrimary,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+            Text(
+                text = "已为你找到 ${uiState.aiSearchResultCount} 条相关内容",
+                color = AppColors.TextSecondary,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            if (uiState.aiSearchSuggestedTags.isNotEmpty()) {
+                Text(
+                    text = "猜你想看：",
+                    color = AppColors.TextSecondary,
+                    style = MaterialTheme.typography.labelLarge
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+                ) {
+                    uiState.aiSearchSuggestedTags.forEach { tag ->
+                        AiSuggestionChip(
+                            text = "#$tag",
+                            selected = tag.equals(uiState.selectedTag, ignoreCase = true),
+                            onClick = { onSuggestedTagClick(tag) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiSuggestionChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(AppRadius.Full)
+            .background(if (selected) AppColors.Primary else Color(0xFFEFF6FF))
+            .border(
+                width = AppSpacing.TagBorderWidth,
+                color = if (selected) AppColors.Primary else Color(0xFFD7E3F8),
+                shape = AppRadius.Full
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = AppSpacing.Medium, vertical = AppSpacing.TagVertical)
+    ) {
+        Text(
+            text = text,
+            color = if (selected) AppColors.OnPrimary else AppColors.Primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+        )
     }
 }
 
@@ -1285,7 +1488,10 @@ private fun ActionChip(
 }
 
 @Composable
-private fun EmptyFeed(showCollectedOnly: Boolean) {
+private fun EmptyFeed(
+    showCollectedOnly: Boolean,
+    hasSearchQuery: Boolean
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1295,10 +1501,10 @@ private fun EmptyFeed(showCollectedOnly: Boolean) {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = if (showCollectedOnly) {
-                "\u6682\u65e0\u6536\u85cf\u5e7f\u544a"
-            } else {
-                "\u6ca1\u6709\u5339\u914d\u7684\u5e7f\u544a"
+            text = when {
+                hasSearchQuery -> "AI 暂时没有理解你的需求，\n试试更具体的描述～"
+                showCollectedOnly -> "\u6682\u65e0\u6536\u85cf\u5e7f\u544a"
+                else -> "\u6ca1\u6709\u5339\u914d\u7684\u5e7f\u544a"
             },
             color = AppColors.TextSecondary,
             style = MaterialTheme.typography.bodyMedium
@@ -1401,6 +1607,74 @@ private fun previewInteractionCount(
     }
 }
 
+private fun previewSemanticMatch(
+    ad: AdItem,
+    query: String,
+    tags: List<String>
+): Boolean {
+    val expandedTerms = previewExpandedTerms(query)
+    val haystack = buildString {
+        append(ad.brandName)
+        append(' ')
+        append(ad.title)
+        append(' ')
+        append(ad.summary)
+        append(' ')
+        append(channelLabelFor(ad.channel))
+        append(' ')
+        append(tags.joinToString(separator = " "))
+    }.lowercase()
+
+    return expandedTerms.any { term -> haystack.contains(term.lowercase()) }
+}
+
+private fun previewExpandedTerms(query: String): List<String> {
+    val terms = mutableListOf(query.trim())
+    val normalized = query.lowercase()
+    if ("ai" in normalized || "智能" in normalized || "学生" in normalized) {
+        terms += listOf("ai", "课程", "学习", "教育", "效率")
+    }
+    if ("运动" in normalized || "健身" in normalized) {
+        terms += listOf("健身", "训练", "health", "fitness")
+    }
+    if ("数码" in normalized || "视频" in normalized) {
+        terms += listOf("视频", "video", "相机", "camera", "数码")
+    }
+    if ("咖啡" in normalized || "优惠" in normalized || "外卖" in normalized) {
+        terms += listOf("餐饮", "午餐", "优惠", "cashback", "cafe")
+    }
+    if ("办公" in normalized || "程序员" in normalized) {
+        terms += listOf("办公", "通勤", "desk", "work")
+    }
+    return terms.filter { it.isNotBlank() }.distinct()
+}
+
+private fun previewSearchUnderstanding(query: String): String {
+    val normalized = query.lowercase()
+    return when {
+        query.isBlank() -> ""
+        "学生" in normalized && "ai" in normalized -> "适合学生用户的 AI 效率工具"
+        "运动" in normalized || "健身" in normalized -> "运动健身、训练或健康相关内容"
+        "数码" in normalized && "视频" in normalized -> "数码类的视频广告创意"
+        "咖啡" in normalized || "优惠" in normalized -> "咖啡、饮品或餐饮优惠内容"
+        "程序员" in normalized || "办公" in normalized -> "适合程序员的办公效率与桌面装备"
+        else -> query.trim()
+    }
+}
+
+private fun previewSearchSuggestions(query: String): List<String> {
+    val normalized = query.lowercase()
+    return when {
+        query.isBlank() -> emptyList()
+        "学生" in normalized || "ai" in normalized -> listOf("AI工具", "效率办公", "学生党")
+        "运动" in normalized || "健身" in normalized -> listOf("运动健身", "健康生活", "视频广告")
+        "数码" in normalized || "视频" in normalized -> listOf("数码好物", "视频广告", "新品")
+        "咖啡" in normalized || "优惠" in normalized -> listOf("咖啡优惠", "附近生活", "低价好物")
+        "办公" in normalized || "程序员" in normalized -> listOf("效率办公", "数码好物", "通勤")
+        else -> listOf("AI推荐", "高相关", "灵感")
+    }
+}
+
 @Preview(
     name = "Home feed",
     showBackground = true,
@@ -1424,10 +1698,7 @@ private fun HomeScreenPreview() {
             .filter { selectedChannel == null || it.channel == selectedChannel }
             .filter { ad ->
                 val query = searchText.trim()
-                query.isBlank() ||
-                    ad.title.contains(query, ignoreCase = true) ||
-                    ad.summary.contains(query, ignoreCase = true) ||
-                    previewAiTagsByAdId[ad.id].orEmpty().any { it.contains(query, ignoreCase = true) }
+                query.isBlank() || previewSemanticMatch(ad, query, previewAiTagsByAdId[ad.id].orEmpty())
             }
             .filter { ad ->
                 selectedTag.isNullOrBlank() ||
@@ -1483,6 +1754,10 @@ private fun HomeScreenPreview() {
                         channels = Channel.entries,
                         selectedChannel = selectedChannel,
                         searchText = searchText,
+                        isAiSearchUnderstanding = false,
+                        aiSearchUnderstanding = previewSearchUnderstanding(searchText),
+                        aiSearchSuggestedTags = previewSearchSuggestions(searchText),
+                        aiSearchResultCount = visibleAds.size,
                         selectedTag = selectedTag,
                         ads = visibleAds,
                         adAiSummariesByAdId = visibleAds.associate { it.id to it.summary },
@@ -1511,6 +1786,7 @@ private fun HomeScreenPreview() {
                     ),
                     onChannelSelected = { selectedChannel = it },
                     onSearchChange = { searchText = it },
+                    onSearchSubmit = {},
                     onTagSelected = { tag ->
                         selectedTag = tag
                             ?.trim()
@@ -1757,16 +2033,6 @@ private fun VideoDetailContent(
                     style = MaterialTheme.typography.labelLarge
                 )
             }
-            Text(
-                text = "\u89c6\u9891\u7d20\u6750",
-                color = AppColors.Primary,
-                style = MaterialTheme.typography.labelLarge
-            )
-            Text(
-                text = ad.videoUrl ?: "\u672c\u5730 mock \u89c6\u9891",
-                color = AppColors.TextSecondary,
-                style = MaterialTheme.typography.bodyMedium
-            )
             Text(
                 text = "\u0041\u0049 \u6458\u8981",
                 color = AppColors.Primary,

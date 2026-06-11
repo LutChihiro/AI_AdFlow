@@ -9,6 +9,7 @@ import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.Channel
 import com.example.aiadflow.data.model.TrackEvent
 import com.example.aiadflow.data.repository.AdRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,6 +25,10 @@ data class AdFeedUiState(
     val channels: List<Channel> = emptyList(),
     val selectedChannel: Channel? = null,
     val searchText: String = "",
+    val isAiSearchUnderstanding: Boolean = false,
+    val aiSearchUnderstanding: String = "",
+    val aiSearchSuggestedTags: List<String> = emptyList(),
+    val aiSearchResultCount: Int = 0,
     val selectedTag: String? = null,
     val ads: List<AdItem> = emptyList(),
     val totalExposureCount: Int = 0,
@@ -54,10 +59,12 @@ class AdFeedViewModel(
     private companion object {
         const val PageSize = 6
         const val LoadMoreDelayMillis = 350L
+        const val SearchUnderstandingDelayMillis = 280L
     }
 
     private val summaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val tagScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var searchJob: Job? = null
 
     private val _uiState = MutableStateFlow(
         run {
@@ -77,6 +84,7 @@ class AdFeedViewModel(
                 collectedCount = initialAds.count { localState.collectedOverridesByAdId[it.id] ?: it.collected },
                 adAiSummariesByAdId = repository.getAdAiSummaries(initialAds.take(PageSize).map(AdItem::id)),
                 adAiTagsByAdId = repository.getAdAiTags(initialAds.take(PageSize).map(AdItem::id)),
+                aiSearchResultCount = initialAds.size,
                 hasMoreAds = initialAds.size > PageSize,
                 currentPage = 1
             )
@@ -89,20 +97,20 @@ class AdFeedViewModel(
     }
 
     fun switchChannel(channel: Channel?) {
+        searchJob?.cancel()
         _uiState.update { current ->
             val nextChannel = channel?.takeIf { it in current.channels }
             if (nextChannel == current.selectedChannel) {
                 return@update current
             }
 
-            val allAds = current.filteredAds(
+            val page = current.buildSearchPage(
                 channel = nextChannel,
                 query = current.searchText,
                 selectedTag = current.selectedTag
             )
             current.pageReset(
-                ads = allAds.take(PageSize),
-                hasMoreAds = allAds.size > PageSize,
+                page = page,
                 selectedChannel = nextChannel
             )
         }
@@ -114,18 +122,50 @@ class AdFeedViewModel(
     }
 
     fun updateSearchText(text: String) {
+        searchJob?.cancel()
+        if (text.trim().isBlank()) {
+            applySearch(text, force = true)
+            return
+        }
+
         _uiState.update { current ->
-            val allAds = current.filteredAds(query = text)
+            current.copy(
+                searchText = text,
+                isAiSearchUnderstanding = true,
+                isLoadingMore = false,
+                loadMoreErrorMessage = null
+            )
+        }
+
+        searchJob = viewModelScope.launch {
+            delay(SearchUnderstandingDelayMillis)
+            applySearch(text)
+        }
+    }
+
+    fun submitSearch() {
+        searchJob?.cancel()
+        applySearch(_uiState.value.searchText)
+    }
+
+    private fun applySearch(query: String, force: Boolean = false) {
+        _uiState.update { current ->
+            if (!force && current.searchText != query) {
+                return@update current
+            }
+
+            val page = current.buildSearchPage(query = query)
             current.pageReset(
-                ads = allAds.take(PageSize),
-                hasMoreAds = allAds.size > PageSize,
-                searchText = text
+                page = page,
+                searchText = query,
+                isAiSearchUnderstanding = false
             )
         }
         ensureAiFields(_uiState.value.ads)
     }
 
     fun selectTag(tag: String?) {
+        searchJob?.cancel()
         _uiState.update { current ->
             val nextTag = tag
                 ?.trim()
@@ -134,10 +174,9 @@ class AdFeedViewModel(
                     if (selectedTag.equals(current.selectedTag, ignoreCase = true)) null else selectedTag
                 }
 
-            val allAds = current.filteredAds(selectedTag = nextTag)
+            val page = current.buildSearchPage(selectedTag = nextTag)
             current.pageReset(
-                ads = allAds.take(PageSize),
-                hasMoreAds = allAds.size > PageSize,
+                page = page,
                 selectedTag = nextTag
             )
         }
@@ -145,11 +184,16 @@ class AdFeedViewModel(
     }
 
     fun clearFilters() {
+        searchJob?.cancel()
         _uiState.update { current ->
-            val allAds = repository.getAds()
+            val page = current.buildSearchPage(
+                channel = null,
+                query = "",
+                selectedTag = null,
+                showCollectedOnly = false
+            )
             current.pageReset(
-                ads = allAds.take(PageSize),
-                hasMoreAds = allAds.size > PageSize,
+                page = page,
                 selectedChannel = null,
                 searchText = "",
                 selectedTag = null,
@@ -160,12 +204,12 @@ class AdFeedViewModel(
     }
 
     fun toggleCollectedOnly() {
+        searchJob?.cancel()
         _uiState.update { current ->
             val nextShowCollectedOnly = !current.showCollectedOnly
-            val allAds = current.filteredAds(showCollectedOnly = nextShowCollectedOnly)
+            val page = current.buildSearchPage(showCollectedOnly = nextShowCollectedOnly)
             current.pageReset(
-                ads = allAds.take(PageSize),
-                hasMoreAds = allAds.size > PageSize,
+                page = page,
                 showCollectedOnly = nextShowCollectedOnly
             )
         }
@@ -175,19 +219,18 @@ class AdFeedViewModel(
     fun refreshAds(): Boolean {
         val current = _uiState.value
         return try {
-            val refreshedAds = repository.getAds(
-                current.selectedChannel,
-                current.searchText,
-                current.selectedTag,
-                current.adAiTagsByAdId
-            ).filterCollected(current.showCollectedOnly, current.collectedOverridesByAdId)
+            val page = current.buildSearchPage(page = 1)
             _uiState.update {
                 it.copy(
-                    ads = refreshedAds.take(PageSize),
+                    ads = page.ads,
                     collectedCount = repository.getAds()
                         .count { ad -> it.collectedOverridesByAdId[ad.id] ?: ad.collected },
-                    hasMoreAds = refreshedAds.size > PageSize,
+                    hasMoreAds = page.hasMoreAds,
                     currentPage = 1,
+                    isAiSearchUnderstanding = false,
+                    aiSearchUnderstanding = page.interpretation,
+                    aiSearchSuggestedTags = page.suggestedTags,
+                    aiSearchResultCount = page.totalCount,
                     isLoadingMore = false,
                     loadMoreErrorMessage = null
                 )
@@ -227,18 +270,15 @@ class AdFeedViewModel(
 
                 try {
                     val nextPage = latest.currentPage + 1
-                    val allAds = repository.getAds(
-                        latest.selectedChannel,
-                        latest.searchText,
-                        latest.selectedTag,
-                        latest.adAiTagsByAdId
-                    ).filterCollected(latest.showCollectedOnly, latest.collectedOverridesByAdId)
-                    val nextAds = allAds.take(nextPage * PageSize)
+                    val page = latest.buildSearchPage(page = nextPage)
 
                     latest.copy(
-                        ads = nextAds,
+                        ads = page.ads,
                         currentPage = nextPage,
-                        hasMoreAds = nextAds.size < allAds.size,
+                        hasMoreAds = page.hasMoreAds,
+                        aiSearchUnderstanding = page.interpretation,
+                        aiSearchSuggestedTags = page.suggestedTags,
+                        aiSearchResultCount = page.totalCount,
                         isLoadingMore = false,
                         loadMoreErrorMessage = null
                     )
@@ -284,15 +324,21 @@ class AdFeedViewModel(
             val nextCollected = !currentCollected
             val currentCount = current.collectCountsByAdId[adId] ?: ad.effectiveInitialCollectCount()
             val nextOverrides = current.collectedOverridesByAdId + (adId to nextCollected)
-            val nextAds = current.copy(collectedOverridesByAdId = nextOverrides)
-                .filteredAds(collectedOverridesByAdId = nextOverrides)
+            val page = current.copy(collectedOverridesByAdId = nextOverrides)
+                .buildSearchPage(
+                    collectedOverridesByAdId = nextOverrides,
+                    page = current.currentPage
+                )
             val nextState = current.copy(
                 collectedOverridesByAdId = nextOverrides,
                 collectCountsByAdId = current.collectCountsByAdId + (adId to currentCount.adjustCount(nextCollected)),
                 collectedCount = repository.getAds()
                     .count { repositoryAd -> nextOverrides[repositoryAd.id] ?: repositoryAd.collected },
-                ads = nextAds.take(current.currentPage * PageSize),
-                hasMoreAds = nextAds.size > current.currentPage * PageSize,
+                ads = page.ads,
+                hasMoreAds = page.hasMoreAds,
+                aiSearchUnderstanding = page.interpretation,
+                aiSearchSuggestedTags = page.suggestedTags,
+                aiSearchResultCount = page.totalCount,
                 loadMoreErrorMessage = null
             )
             saveLocalState(nextState)
@@ -343,6 +389,7 @@ class AdFeedViewModel(
     }
 
     override fun onCleared() {
+        searchJob?.cancel()
         summaryScope.cancel()
         tagScope.cancel()
         super.onCleared()
@@ -378,10 +425,26 @@ class AdFeedViewModel(
                 repository.saveAdAiSummary(ad.id, summary)
                 repository.syncAdAiSummaryCacheToDatabase(listOf(ad.id))
                 _uiState.update { current ->
-                    current.copy(
-                        adAiSummariesByAdId = current.adAiSummariesByAdId + (ad.id to summary),
+                    val nextSummariesByAdId = current.adAiSummariesByAdId + (ad.id to summary)
+                    val nextState = current.copy(
+                        adAiSummariesByAdId = nextSummariesByAdId,
                         generatingAdSummaryIds = current.generatingAdSummaryIds - ad.id
                     )
+                    if (current.searchText.isBlank()) {
+                        nextState
+                    } else {
+                        val page = nextState.buildSearchPage(
+                            aiSummariesByAdId = nextSummariesByAdId,
+                            page = current.currentPage
+                        )
+                        nextState.copy(
+                            ads = page.ads,
+                            hasMoreAds = page.hasMoreAds,
+                            aiSearchUnderstanding = page.interpretation,
+                            aiSearchSuggestedTags = page.suggestedTags,
+                            aiSearchResultCount = page.totalCount
+                        )
+                    }
                 }
             }
         }
@@ -422,14 +485,20 @@ class AdFeedViewModel(
                     } else {
                         current.adAiTagsByAdId + (ad.id to tags)
                     }
-                    val allAds = current.copy(adAiTagsByAdId = nextTagsByAdId)
-                        .filteredAds()
-                    val currentLimit = current.currentPage * PageSize
-                    current.copy(
+                    val nextState = current.copy(
                         adAiTagsByAdId = nextTagsByAdId,
-                        generatingAdTagIds = current.generatingAdTagIds - ad.id,
-                        ads = allAds.take(currentLimit),
-                        hasMoreAds = allAds.size > currentLimit
+                        generatingAdTagIds = current.generatingAdTagIds - ad.id
+                    )
+                    val page = nextState.buildSearchPage(
+                        aiTagsByAdId = nextTagsByAdId,
+                        page = current.currentPage
+                    )
+                    nextState.copy(
+                        ads = page.ads,
+                        hasMoreAds = page.hasMoreAds,
+                        aiSearchUnderstanding = page.interpretation,
+                        aiSearchSuggestedTags = page.suggestedTags,
+                        aiSearchResultCount = page.totalCount
                     )
                 }
             }
@@ -463,35 +532,56 @@ class AdFeedViewModel(
     }
 
     private fun AdFeedUiState.pageReset(
-        ads: List<AdItem>,
-        hasMoreAds: Boolean,
+        page: SearchPage,
         selectedChannel: Channel? = this.selectedChannel,
         searchText: String = this.searchText,
         selectedTag: String? = this.selectedTag,
-        showCollectedOnly: Boolean = this.showCollectedOnly
+        showCollectedOnly: Boolean = this.showCollectedOnly,
+        isAiSearchUnderstanding: Boolean = false
     ): AdFeedUiState {
         return copy(
             selectedChannel = selectedChannel,
             searchText = searchText,
             selectedTag = selectedTag,
             showCollectedOnly = showCollectedOnly,
-            ads = ads,
-            hasMoreAds = hasMoreAds,
+            ads = page.ads,
+            hasMoreAds = page.hasMoreAds,
+            isAiSearchUnderstanding = isAiSearchUnderstanding,
+            aiSearchUnderstanding = page.interpretation,
+            aiSearchSuggestedTags = page.suggestedTags,
+            aiSearchResultCount = page.totalCount,
             currentPage = 1,
             isLoadingMore = false,
             loadMoreErrorMessage = null
         )
     }
 
-    private fun AdFeedUiState.filteredAds(
+    private fun AdFeedUiState.buildSearchPage(
         channel: Channel? = selectedChannel,
         query: String = searchText,
         selectedTag: String? = this.selectedTag,
         showCollectedOnly: Boolean = this.showCollectedOnly,
-        collectedOverridesByAdId: Map<Long, Boolean> = this.collectedOverridesByAdId
-    ): List<AdItem> {
-        return repository.getAds(channel, query, selectedTag, adAiTagsByAdId)
-            .filterCollected(showCollectedOnly, collectedOverridesByAdId)
+        collectedOverridesByAdId: Map<Long, Boolean> = this.collectedOverridesByAdId,
+        aiTagsByAdId: Map<Long, List<String>> = this.adAiTagsByAdId,
+        aiSummariesByAdId: Map<Long, String> = this.adAiSummariesByAdId,
+        page: Int = 1
+    ): SearchPage {
+        val result = repository.searchAds(
+            channel = channel,
+            query = query,
+            selectedTag = selectedTag,
+            aiTagsByAdId = aiTagsByAdId,
+            aiSummariesByAdId = aiSummariesByAdId
+        )
+        val filteredAds = result.ads.filterCollected(showCollectedOnly, collectedOverridesByAdId)
+        val limit = page * PageSize
+        return SearchPage(
+            ads = filteredAds.take(limit),
+            totalCount = filteredAds.size,
+            hasMoreAds = filteredAds.size > limit,
+            interpretation = result.interpretation,
+            suggestedTags = result.suggestedTags
+        )
     }
 
     private fun List<AdItem>.filterCollected(
@@ -516,4 +606,12 @@ class AdFeedViewModel(
     private fun Int.adjustCount(selected: Boolean): Int {
         return (this + if (selected) 1 else -1).coerceAtLeast(0)
     }
+
+    private data class SearchPage(
+        val ads: List<AdItem>,
+        val totalCount: Int,
+        val hasMoreAds: Boolean,
+        val interpretation: String,
+        val suggestedTags: List<String>
+    )
 }
