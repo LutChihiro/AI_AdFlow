@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -66,6 +67,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -77,6 +79,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -91,6 +94,13 @@ import com.example.aiadflow.data.model.AdType
 import com.example.aiadflow.data.model.Channel
 import com.example.aiadflow.ui.feed.AdFeedUiState
 import com.example.aiadflow.ui.feed.AdFeedViewModel
+import com.example.aiadflow.ui.media.AsyncAdImage
+import com.example.aiadflow.ui.media.AdVideoPlayerCard
+import com.example.aiadflow.ui.media.mediaCacheKeyFor
+import com.example.aiadflow.ui.media.mediaUrlFor
+import com.example.aiadflow.ui.media.preloadAdMedia
+import com.example.aiadflow.ui.media.rememberRetryImageLoader
+import com.example.aiadflow.ui.media.videoStreamUrlFor
 import com.example.aiadflow.ui.theme.AIAdFlowTheme
 import com.example.aiadflow.ui.theme.AppColors
 import com.example.aiadflow.ui.theme.AppRadius
@@ -99,6 +109,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val RefreshSnackbarVisibleMillis = 1200L
+private const val FeedStaticItemCount = 6
 
 private fun shareText(context: Context, text: String) {
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
@@ -123,6 +134,9 @@ class MainActivity : ComponentActivity() {
                 val viewModel = remember { AdFeedViewModel() }
                 val uiState by viewModel.uiState.collectAsState()
                 var selectedAdId by remember { mutableStateOf<Long?>(null) }
+                val homeListState = rememberSaveable(saver = LazyListState.Saver) {
+                    LazyListState()
+                }
                 val context = LocalContext.current
                 val shareAd: (Long) -> Unit = { adId ->
                     viewModel.shareAd(adId)?.let { text ->
@@ -148,6 +162,7 @@ class MainActivity : ComponentActivity() {
                     if (detailAd == null) {
                         HomeScreen(
                             uiState = uiState,
+                            listState = homeListState,
                             onChannelSelected = viewModel::switchChannel,
                             onSearchChange = viewModel::updateSearchText,
                             onSearchSubmit = viewModel::submitSearch,
@@ -190,6 +205,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun HomeScreen(
     uiState: AdFeedUiState,
+    listState: LazyListState,
     onChannelSelected: (Channel?) -> Unit,
     onSearchChange: (String) -> Unit,
     onSearchSubmit: () -> Unit,
@@ -203,10 +219,11 @@ private fun HomeScreen(
     onShareClick: (Long) -> Unit,
     onAdClick: (Long) -> Unit
 ) {
-    val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
-    val shouldLoadMore by remember(uiState.hasMoreAds, uiState.isLoadingMore, uiState.ads.size) {
+    val context = LocalContext.current
+    val isPreview = LocalInspectionMode.current
+    val shouldLoadMore by remember(uiState.hasMoreAds, uiState.isLoadingMore, uiState.ads.size, listState) {
         derivedStateOf {
             val layoutInfo = listState.layoutInfo
             val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@derivedStateOf false
@@ -220,10 +237,25 @@ private fun HomeScreen(
                 lastVisibleIndex >= totalItems - 2
         }
     }
+    val prefetchAds by remember(uiState.ads, listState) {
+        derivedStateOf {
+            val visibleIndexes = listState.layoutInfo.visibleItemsInfo.map { it.index }
+            val firstAdIndex = ((visibleIndexes.firstOrNull() ?: 0) - FeedStaticItemCount).coerceAtLeast(0)
+            uiState.ads
+                .drop(firstAdIndex)
+                .take(5)
+        }
+    }
 
     LaunchedEffect(shouldLoadMore) {
         if (shouldLoadMore) {
             onLoadMore()
+        }
+    }
+
+    LaunchedEffect(prefetchAds, isPreview) {
+        if (!isPreview) {
+            preloadAdMedia(context, prefetchAds)
         }
     }
 
@@ -934,142 +966,72 @@ private fun AdMediaBlock(
     mediaSpec: AdMediaSpec,
     modifier: Modifier = Modifier
 ) {
-    var isVideoPlaying by remember(ad.id) { mutableStateOf(false) }
-    var isVideoMuted by remember(ad.id) { mutableStateOf(false) }
+    var isVideoStarted by rememberSaveable("feed-video-started-${ad.id}") { mutableStateOf(false) }
+    var isVideoPlaying by rememberSaveable("feed-video-playing-${ad.id}") { mutableStateOf(false) }
+    var isVideoMuted by rememberSaveable("feed-video-muted-${ad.id}") { mutableStateOf(false) }
+    var videoPositionMs by rememberSaveable("feed-video-position-${ad.id}") { mutableStateOf(0L) }
+    val imageLoader = rememberRetryImageLoader(
+        data = mediaUrlFor(ad),
+        cacheKey = mediaCacheKeyFor(ad)
+    )
+
+    if (mediaSpec.showPlayButton) {
+        AdVideoPlayerCard(
+            ad = ad,
+            coverLoader = imageLoader,
+            videoUrl = videoStreamUrlFor(ad),
+            isPlayerVisible = isVideoStarted,
+            isPlaying = isVideoPlaying,
+            isMuted = isVideoMuted,
+            playbackPositionMs = videoPositionMs,
+            modifier = modifier,
+            onPlayerVisibleChange = { isVideoStarted = it },
+            onPlayingChange = { isVideoPlaying = it },
+            onMutedChange = { isVideoMuted = it },
+            onPositionChange = { videoPositionMs = it }
+        )
+        return
+    }
 
     Box(
         modifier = modifier
             .clip(AppRadius.Medium)
             .background(mediaSpec.color)
-            .padding(AppSpacing.Medium)
     ) {
+        AsyncAdImage(
+            loader = imageLoader,
+            contentDescription = ad.mediaLabel,
+            modifier = Modifier.fillMaxSize(),
+            accentColor = mediaSpec.color
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.08f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.42f)
+                        )
+                    )
+                )
+        )
         Text(
             text = mediaSpec.labelPrefix + ad.mediaLabel,
+            modifier = Modifier.padding(AppSpacing.Medium),
             color = AppColors.OnPrimary,
             style = MaterialTheme.typography.labelLarge
         )
-        if (mediaSpec.showPlayButton) {
-            VideoPlayButton(
-                isPlaying = isVideoPlaying,
-                onClick = { isVideoPlaying = !isVideoPlaying },
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(AppSpacing.PlayButton)
-            )
-            VideoMuteButton(
-                isMuted = isVideoMuted,
-                onClick = { isVideoMuted = !isVideoMuted },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(AppSpacing.VideoMuteButton)
-            )
-        }
         if (mediaSpec.showChannelBadge) {
             Text(
                 text = channelLabelFor(ad.channel),
-                modifier = Modifier.align(Alignment.BottomStart),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(AppSpacing.Medium),
                 color = AppColors.OnPrimary,
                 style = MaterialTheme.typography.labelLarge
             )
-        }
-    }
-}
-
-@Composable
-private fun VideoMuteButton(
-    isMuted: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.38f))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(modifier = Modifier.size(AppSpacing.VideoMuteIcon)) {
-            val speaker = Path().apply {
-                moveTo(size.width * 0.12f, size.height * 0.38f)
-                lineTo(size.width * 0.30f, size.height * 0.38f)
-                lineTo(size.width * 0.52f, size.height * 0.20f)
-                lineTo(size.width * 0.52f, size.height * 0.80f)
-                lineTo(size.width * 0.30f, size.height * 0.62f)
-                lineTo(size.width * 0.12f, size.height * 0.62f)
-                close()
-            }
-            drawPath(path = speaker, color = Color.White)
-
-            if (isMuted) {
-                drawLine(
-                    color = Color.White,
-                    start = androidx.compose.ui.geometry.Offset(size.width * 0.66f, size.height * 0.34f),
-                    end = androidx.compose.ui.geometry.Offset(size.width * 0.90f, size.height * 0.66f),
-                    strokeWidth = size.width * 0.09f
-                )
-                drawLine(
-                    color = Color.White,
-                    start = androidx.compose.ui.geometry.Offset(size.width * 0.90f, size.height * 0.34f),
-                    end = androidx.compose.ui.geometry.Offset(size.width * 0.66f, size.height * 0.66f),
-                    strokeWidth = size.width * 0.09f
-                )
-            } else {
-                drawLine(
-                    color = Color.White,
-                    start = androidx.compose.ui.geometry.Offset(size.width * 0.66f, size.height * 0.38f),
-                    end = androidx.compose.ui.geometry.Offset(size.width * 0.82f, size.height * 0.50f),
-                    strokeWidth = size.width * 0.08f
-                )
-                drawLine(
-                    color = Color.White,
-                    start = androidx.compose.ui.geometry.Offset(size.width * 0.82f, size.height * 0.50f),
-                    end = androidx.compose.ui.geometry.Offset(size.width * 0.66f, size.height * 0.62f),
-                    strokeWidth = size.width * 0.08f
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun VideoPlayButton(
-    isPlaying: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.88f))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(modifier = Modifier.size(AppSpacing.VideoPlayIcon)) {
-            if (isPlaying) {
-                val barWidth = size.width * 0.22f
-                val gap = size.width * 0.16f
-                val top = size.height * 0.22f
-                val bottom = size.height * 0.78f
-                val leftStart = (size.width - barWidth * 2 - gap) / 2f
-                drawRect(
-                    color = AppColors.Primary,
-                    topLeft = androidx.compose.ui.geometry.Offset(leftStart, top),
-                    size = androidx.compose.ui.geometry.Size(barWidth, bottom - top)
-                )
-                drawRect(
-                    color = AppColors.Primary,
-                    topLeft = androidx.compose.ui.geometry.Offset(leftStart + barWidth + gap, top),
-                    size = androidx.compose.ui.geometry.Size(barWidth, bottom - top)
-                )
-            } else {
-                val path = Path().apply {
-                    moveTo(size.width * 0.36f, size.height * 0.22f)
-                    lineTo(size.width * 0.36f, size.height * 0.78f)
-                    lineTo(size.width * 0.82f, size.height * 0.5f)
-                    close()
-                }
-                drawPath(path = path, color = AppColors.Primary)
-            }
         }
     }
 }
@@ -1784,6 +1746,7 @@ private fun HomeScreenPreview() {
                         hasMoreAds = false,
                         loadMoreErrorMessage = null
                     ),
+                    listState = rememberLazyListState(),
                     onChannelSelected = { selectedChannel = it },
                     onSearchChange = { searchText = it },
                     onSearchSubmit = {},
@@ -2054,65 +2017,32 @@ private fun VideoDetailContent(
 
 @Composable
 private fun VideoPlayerArea(ad: AdItem) {
-    var isPlaying by remember(ad.id) { mutableStateOf(false) }
-    var isMuted by remember(ad.id) { mutableStateOf(false) }
+    var isVideoStarted by rememberSaveable("detail-main-video-started-${ad.id}") { mutableStateOf(false) }
+    var isPlaying by rememberSaveable("detail-main-video-playing-${ad.id}") { mutableStateOf(false) }
+    var isMuted by rememberSaveable("detail-main-video-muted-${ad.id}") { mutableStateOf(false) }
+    var videoPositionMs by rememberSaveable("detail-main-video-position-${ad.id}") { mutableStateOf(0L) }
+    val imageLoader = rememberRetryImageLoader(
+        data = mediaUrlFor(ad),
+        cacheKey = mediaCacheKeyFor(ad)
+    )
 
-    Box(
+    AdVideoPlayerCard(
+        ad = ad,
+        coverLoader = imageLoader,
+        videoUrl = videoStreamUrlFor(ad),
+        isPlayerVisible = isVideoStarted,
+        isPlaying = isPlaying,
+        isMuted = isMuted,
+        playbackPositionMs = videoPositionMs,
         modifier = Modifier
             .fillMaxWidth()
             .height(AppSpacing.VideoMediaHeight)
-            .clip(AppRadius.Large)
-            .background(mediaColorFor(ad.type))
-            .padding(AppSpacing.Medium)
-    ) {
-        Text(
-            text = ad.mediaLabel,
-            color = AppColors.OnPrimary,
-            style = MaterialTheme.typography.labelLarge
-        )
-        VideoPlayButton(
-            isPlaying = isPlaying,
-            onClick = { isPlaying = !isPlaying },
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(AppSpacing.PlayButton)
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .padding(end = AppSpacing.VideoMuteButton + AppSpacing.Small),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(AppSpacing.VideoProgressHeight)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.35f))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.42f)
-                        .height(AppSpacing.VideoProgressHeight)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.9f))
-                )
-            }
-            Text(
-                text = if (isPlaying) "00:12 / 00:30" else "00:00 / 00:30",
-                color = AppColors.OnPrimary,
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
-        VideoMuteButton(
-            isMuted = isMuted,
-            onClick = { isMuted = !isMuted },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .size(AppSpacing.VideoMuteButton)
-        )
-    }
+            .clip(AppRadius.Large),
+        onPlayerVisibleChange = { isVideoStarted = it },
+        onPlayingChange = { isPlaying = it },
+        onMutedChange = { isMuted = it },
+        onPositionChange = { videoPositionMs = it }
+    )
 }
 
 @Composable
@@ -2120,38 +2050,74 @@ private fun DetailMediaBlock(
     ad: AdItem,
     height: Dp
 ) {
+    val imageLoader = rememberRetryImageLoader(
+        data = mediaUrlFor(ad),
+        cacheKey = mediaCacheKeyFor(ad)
+    )
+
+    if (ad.type == AdType.Video) {
+        var isVideoStarted by rememberSaveable("detail-inline-video-started-${ad.id}") { mutableStateOf(false) }
+        var isPlaying by rememberSaveable("detail-inline-video-playing-${ad.id}") { mutableStateOf(false) }
+        var isMuted by rememberSaveable("detail-inline-video-muted-${ad.id}") { mutableStateOf(false) }
+        var videoPositionMs by rememberSaveable("detail-inline-video-position-${ad.id}") { mutableStateOf(0L) }
+
+        AdVideoPlayerCard(
+            ad = ad,
+            coverLoader = imageLoader,
+            videoUrl = videoStreamUrlFor(ad),
+            isPlayerVisible = isVideoStarted,
+            isPlaying = isPlaying,
+            isMuted = isMuted,
+            playbackPositionMs = videoPositionMs,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(height)
+                .clip(AppRadius.Large),
+            onPlayerVisibleChange = { isVideoStarted = it },
+            onPlayingChange = { isPlaying = it },
+            onMutedChange = { isMuted = it },
+            onPositionChange = { videoPositionMs = it }
+        )
+        return
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(height)
             .clip(AppRadius.Large)
             .background(mediaColorFor(ad.type))
-            .padding(AppSpacing.Medium)
     ) {
+        AsyncAdImage(
+            loader = imageLoader,
+            contentDescription = ad.mediaLabel,
+            modifier = Modifier.fillMaxSize(),
+            accentColor = mediaColorFor(ad.type)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.08f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.46f)
+                        )
+                    )
+                )
+        )
         Text(
             text = ad.mediaLabel,
+            modifier = Modifier.padding(AppSpacing.Medium),
             color = AppColors.OnPrimary,
             style = MaterialTheme.typography.labelLarge
         )
-        if (ad.type == AdType.Video) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(AppSpacing.PlayButton)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.9f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "\u64ad\u653e",
-                    color = AppColors.Primary,
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
-        }
         Text(
             text = channelLabelFor(ad.channel),
-            modifier = Modifier.align(Alignment.BottomStart),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(AppSpacing.Medium),
             color = AppColors.OnPrimary,
             style = MaterialTheme.typography.labelLarge
         )
