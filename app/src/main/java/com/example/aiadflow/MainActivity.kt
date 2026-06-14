@@ -19,6 +19,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -66,18 +69,34 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.aiadflow.data.local.SharedPreferencesAdLocalStateStore
 import com.example.aiadflow.data.model.AdItem
 import com.example.aiadflow.data.model.AdType
 import com.example.aiadflow.data.model.Channel
 import com.example.aiadflow.ui.feed.AdFeedUiState
 import com.example.aiadflow.ui.feed.AdFeedViewModel
+import com.example.aiadflow.ui.feed.ConversationSearchMessage
+import com.example.aiadflow.ui.media.AdVideoPlayerCard
+import com.example.aiadflow.ui.media.AsyncAdImage
+import com.example.aiadflow.ui.media.mediaCacheKeyFor
+import com.example.aiadflow.ui.media.mediaUrlFor
+import com.example.aiadflow.ui.media.rememberRetryImageLoader
+import com.example.aiadflow.ui.media.videoStreamUrlFor
 import com.example.aiadflow.ui.theme.AIAdFlowTheme
 import com.example.aiadflow.ui.theme.AppColors
 import com.example.aiadflow.ui.theme.AppRadius
@@ -86,6 +105,24 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val RefreshSnackbarVisibleMillis = 1200L
+private val HomeBackgroundBrush = Brush.verticalGradient(
+    colors = listOf(
+        Color(0xFFF4F8FF),
+        Color(0xFFEEF6FF),
+        Color(0xFFFFFFFF)
+    )
+)
+private val PrimaryGradientBrush = Brush.linearGradient(
+    colors = listOf(
+        Color(0xFF2563EB),
+        Color(0xFF7C3AED)
+    )
+)
+private val TagBackgroundColors = listOf(
+    Color(0xFFEFF6FF),
+    Color(0xFFF3EEFF),
+    Color(0xFFF3F6FA)
+)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,6 +137,17 @@ class MainActivity : ComponentActivity() {
                 }
                 val uiState by viewModel.uiState.collectAsState()
                 var selectedAd by remember { mutableStateOf<AdItem?>(null) }
+                val shareAd: (Long) -> Unit = { adId ->
+                    viewModel.shareAd(adId)?.let { shareText ->
+                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                        }
+                        startActivity(
+                            Intent.createChooser(sendIntent, "\u5206\u4eab\u5e7f\u544a")
+                        )
+                    }
+                }
 
                 AnimatedContent(
                     targetState = selectedAd,
@@ -120,6 +168,9 @@ class MainActivity : ComponentActivity() {
                             uiState = uiState,
                             onChannelSelected = viewModel::switchChannel,
                             onSearchChange = viewModel::updateSearchText,
+                            onConversationDraftChange = viewModel::updateConversationDraft,
+                            onConversationSubmit = viewModel::submitConversationalSearch,
+                            onConversationClear = viewModel::clearConversation,
                             onTagSelected = viewModel::selectTag,
                             onClearFilters = viewModel::clearFilters,
                             onCollectedFilterClick = viewModel::toggleCollectedOnly,
@@ -128,17 +179,7 @@ class MainActivity : ComponentActivity() {
                             onRetryLoadMore = viewModel::retryLoadMoreAds,
                             onLikeClick = viewModel::toggleLike,
                             onCollectClick = viewModel::toggleCollect,
-                            onShareClick = { adId ->
-                                viewModel.shareAd(adId)?.let { shareText ->
-                                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_TEXT, shareText)
-                                    }
-                                    startActivity(
-                                        Intent.createChooser(sendIntent, "\u5206\u4eab\u5e7f\u544a")
-                                    )
-                                }
-                            },
+                            onShareClick = shareAd,
                             onAdClick = { adId ->
                                 viewModel.getAdDetail(adId)?.let { ad ->
                                     viewModel.trackAdClick(ad)
@@ -149,7 +190,12 @@ class MainActivity : ComponentActivity() {
                     } else {
                         AdDetailScreen(
                             ad = detailAd,
-                            onBackClick = { selectedAd = null }
+                            liked = uiState.likedOverridesByAdId[detailAd.id] ?: detailAd.liked,
+                            collected = uiState.collectedOverridesByAdId[detailAd.id] ?: detailAd.collected,
+                            onBackClick = { selectedAd = null },
+                            onLikeClick = { viewModel.toggleLike(detailAd.id) },
+                            onCollectClick = { viewModel.toggleCollect(detailAd.id) },
+                            onShareClick = { shareAd(detailAd.id) }
                         )
                     }
                 }
@@ -163,6 +209,9 @@ private fun HomeScreen(
     uiState: AdFeedUiState,
     onChannelSelected: (Channel?) -> Unit,
     onSearchChange: (String) -> Unit,
+    onConversationDraftChange: (String) -> Unit,
+    onConversationSubmit: () -> Unit,
+    onConversationClear: () -> Unit,
     onTagSelected: (String?) -> Unit,
     onClearFilters: () -> Unit,
     onCollectedFilterClick: () -> Unit,
@@ -177,6 +226,7 @@ private fun HomeScreen(
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    var showConversationSearch by remember { mutableStateOf(false) }
     val shouldLoadMore by remember(uiState.hasMoreAds, uiState.isLoadingMore, uiState.ads.size) {
         derivedStateOf {
             val layoutInfo = listState.layoutInfo
@@ -215,14 +265,14 @@ private fun HomeScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = AppColors.PageBackground,
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { innerPadding ->
-        Surface(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
-            color = AppColors.PageBackground
+                .background(HomeBackgroundBrush)
+                .padding(innerPadding)
         ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AdFeedRefreshContainer(
@@ -234,21 +284,22 @@ private fun HomeScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = AppSpacing.PageHorizontal),
-                    contentPadding = PaddingValues(bottom = AppSpacing.Section),
-                    verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
             item(key = "status-bars-spacer") {
                 Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
             }
             item(key = "header") {
-                HeaderBar(
+                HomeHeader(
                     showCollectedOnly = uiState.showCollectedOnly,
                     collectedCount = uiState.collectedCount,
-                    onCollectedFilterClick = onCollectedFilterClick
+                    onCollectedFilterClick = onCollectedFilterClick,
+                    onAiSearchClick = { showConversationSearch = !showConversationSearch }
                 )
             }
             item(key = "channel-tabs") {
-                ChannelTabs(
+                CategoryTabs(
                     channels = uiState.channels,
                     selectedChannel = uiState.selectedChannel,
                     onChannelSelected = onChannelSelected
@@ -259,6 +310,19 @@ private fun HomeScreen(
                     query = uiState.searchText,
                     onQueryChange = onSearchChange
                 )
+            }
+            if (showConversationSearch) {
+                item(key = "conversation-search") {
+                    ConversationSearchCard(
+                        draft = uiState.conversationDraft,
+                        messages = uiState.conversationMessages,
+                        resultCount = uiState.aiSearchResultCount,
+                        suggestedTags = uiState.aiSearchSuggestedTags,
+                        onDraftChange = onConversationDraftChange,
+                        onSubmit = onConversationSubmit,
+                        onClear = onConversationClear
+                    )
+                }
             }
             if (uiState.hasActiveFilters()) {
                 item(key = "active-filters") {
@@ -364,57 +428,306 @@ private fun LoadMoreFooter(
 }
 
 @Composable
-private fun HeaderBar(
+private fun HomeHeader(
     showCollectedOnly: Boolean,
     collectedCount: Int,
-    onCollectedFilterClick: () -> Unit
+    onCollectedFilterClick: () -> Unit,
+    onAiSearchClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(AppSpacing.HeaderHeight),
+            .height(76.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "AIAdFlow",
                 color = AppColors.TextPrimary,
-                style = MaterialTheme.typography.headlineMedium
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold
+                )
             )
             Text(
                 text = "\u0041\u0049 \u5e7f\u544a\u4fe1\u606f\u6d41",
-                color = AppColors.TextSecondary,
+                color = Color(0xFF6B7A90),
                 style = MaterialTheme.typography.bodyMedium
             )
         }
-        ActionChip(
-            text = if (showCollectedOnly) {
-                "\u5df2\u6536\u85cf $collectedCount"
-            } else {
-                "\u6536\u85cf $collectedCount"
-            },
-            selected = showCollectedOnly,
-            onClick = onCollectedFilterClick
-        )
-        Spacer(modifier = Modifier.width(AppSpacing.Small))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ActionChip(
+                text = if (showCollectedOnly) {
+                    "\u5df2\u6536\u85cf $collectedCount"
+                } else {
+                    "\u6536\u85cf $collectedCount"
+                },
+                selected = showCollectedOnly,
+                onClick = onCollectedFilterClick
+            )
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .shadow(
+                        elevation = 10.dp,
+                        shape = CircleShape,
+                        ambientColor = Color(0x332563EB),
+                        spotColor = Color(0x332563EB)
+                    )
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .clickable { onAiSearchClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "AI",
+                    color = AppColors.Primary,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationSearchCard(
+    draft: String,
+    messages: List<ConversationSearchMessage>,
+    resultCount: Int,
+    suggestedTags: List<String>,
+    onDraftChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onClear: () -> Unit
+) {
+    val sendButtonBrush = if (draft.isBlank()) {
+        Brush.linearGradient(listOf(Color(0xFFE8EEF7), Color(0xFFE8EEF7)))
+    } else {
+        PrimaryGradientBrush
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(
+                elevation = 10.dp,
+                shape = RoundedCornerShape(24.dp),
+                ambientColor = Color(0x140F2D5C),
+                spotColor = Color(0x140F2D5C)
+            )
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color.White)
+            .border(
+                width = 1.dp,
+                color = Color(0xFFE5ECF6),
+                shape = RoundedCornerShape(24.dp)
+            )
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(PrimaryGradientBrush),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "AI",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "对话式搜索",
+                    color = AppColors.TextPrimary,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = "用自然语言描述广告场景",
+                    color = AppColors.TextSecondary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            if (messages.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .height(32.dp)
+                        .clip(AppRadius.Full)
+                        .background(Color(0xFFF3F6FA))
+                        .clickable { onClear() }
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "清空",
+                        color = AppColors.TextSecondary,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+                    )
+                }
+            }
+        }
+
+        if (messages.isEmpty()) {
+            ConversationHintRow(
+                examples = listOf(
+                    "找适合学生的学习广告",
+                    "推荐本地咖啡优惠",
+                    "我要健身视频素材"
+                ),
+                onExampleClick = onDraftChange
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                messages.takeLast(4).forEach { message ->
+                    ConversationMessageBubble(message = message)
+                }
+            }
+        }
+
+        if (messages.isNotEmpty()) {
+            Text(
+                text = "当前结果 $resultCount 条" + suggestedTags.takeIf { it.isNotEmpty() }
+                    ?.joinToString(prefix = "  ", separator = " ") { "#$it" }
+                    .orEmpty(),
+                color = Color(0xFF64748B),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color(0xFFF7FAFF))
+                .border(
+                    width = 1.dp,
+                    color = if (draft.isBlank()) Color(0xFFE5ECF6) else Color(0xFFB9C7FF),
+                    shape = RoundedCornerShape(18.dp)
+                )
+                .padding(start = 14.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            BasicTextField(
+                value = draft,
+                onValueChange = onDraftChange,
+                modifier = Modifier.weight(1f),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = AppColors.TextPrimary),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
+                decorationBox = { innerTextField ->
+                    if (draft.isBlank()) {
+                        Text(
+                            text = "例如：找适合通勤的数码广告",
+                            color = Color(0xFF9AA8BB),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    innerTextField()
+                }
+            )
+            Box(
+                modifier = Modifier
+                    .height(36.dp)
+                    .width(64.dp)
+                    .clip(AppRadius.Full)
+                    .background(sendButtonBrush)
+                    .clickable(enabled = draft.isNotBlank()) { onSubmit() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "发送",
+                    color = if (draft.isBlank()) Color(0xFF94A3B8) else Color.White,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationHintRow(
+    examples: List<String>,
+    onExampleClick: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        examples.forEach { example ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFFF7FAFF))
+                    .clickable { onExampleClick(example) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = example,
+                    color = Color(0xFF64748B),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationMessageBubble(message: ConversationSearchMessage) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
+    ) {
         Box(
             modifier = Modifier
-                .size(AppSpacing.IconButton)
-                .clip(CircleShape)
-                .background(AppColors.Surface),
-            contentAlignment = Alignment.Center
+                .widthIn(max = 280.dp)
+                .clip(
+                    RoundedCornerShape(
+                        topStart = 18.dp,
+                        topEnd = 18.dp,
+                        bottomStart = if (message.isUser) 18.dp else 6.dp,
+                        bottomEnd = if (message.isUser) 6.dp else 18.dp
+                    )
+                )
+                .background(if (message.isUser) Color(0xFFEEF2FF) else Color(0xFFF7FAFF))
+                .border(
+                    width = 1.dp,
+                    color = if (message.isUser) Color(0xFFD8DFFF) else Color(0xFFE5ECF6),
+                    shape = RoundedCornerShape(
+                        topStart = 18.dp,
+                        topEnd = 18.dp,
+                        bottomStart = if (message.isUser) 18.dp else 6.dp,
+                        bottomEnd = if (message.isUser) 6.dp else 18.dp
+                    )
+                )
+                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Text(
-                text = "AI",
-                color = AppColors.Primary,
-                style = MaterialTheme.typography.labelLarge
+                text = message.text,
+                color = if (message.isUser) Color(0xFF3730A3) else Color(0xFF475569),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
 }
 
 @Composable
-private fun ChannelTabs(
+private fun CategoryTabs(
     channels: List<Channel>,
     selectedChannel: Channel?,
     onChannelSelected: (Channel?) -> Unit
@@ -422,9 +735,15 @@ private fun ChannelTabs(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRadius.Large)
-            .background(AppColors.Surface)
-            .padding(AppSpacing.Small)
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(24.dp),
+                ambientColor = Color(0x140F2D5C),
+                spotColor = Color(0x140F2D5C)
+            )
+            .clip(RoundedCornerShape(24.dp))
+            .background(Color.White)
+            .padding(8.dp)
     ) {
         Row(
             modifier = Modifier
@@ -455,16 +774,12 @@ private fun ChannelTabChip(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    val backgroundColor by animateColorAsState(
-        targetValue = if (selected) AppColors.Primary else AppColors.PageBackground,
-        label = "channelTabBackground"
-    )
     val borderColor by animateColorAsState(
-        targetValue = if (selected) AppColors.Primary else AppColors.MediaPlaceholder,
+        targetValue = if (selected) Color.Transparent else Color(0xFFE4EAF3),
         label = "channelTabBorder"
     )
     val textColor by animateColorAsState(
-        targetValue = if (selected) AppColors.OnPrimary else AppColors.TextSecondary,
+        targetValue = if (selected) Color.White else Color(0xFF66758B),
         label = "channelTabText"
     )
     val tabHeight by animateDpAsState(
@@ -478,7 +793,7 @@ private fun ChannelTabChip(
             .width(AppSpacing.TabWidth)
             .height(tabHeight)
             .clip(AppRadius.Full)
-            .background(backgroundColor)
+            .background(if (selected) PrimaryGradientBrush else Brush.linearGradient(listOf(Color.White, Color.White)))
             .border(
                 width = AppSpacing.TabBorderWidth,
                 color = borderColor,
@@ -503,28 +818,34 @@ private fun SearchBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(AppSpacing.SearchHeight)
-            .clip(AppRadius.Large)
-            .background(AppColors.Surface)
+            .height(56.dp)
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(22.dp),
+                ambientColor = Color(0x120F2D5C),
+                spotColor = Color(0x120F2D5C)
+            )
+            .clip(RoundedCornerShape(22.dp))
+            .background(Color.White)
             .border(
                 width = AppSpacing.SearchBorderWidth,
-                color = if (query.isBlank()) AppColors.MediaPlaceholder else AppColors.Primary,
-                shape = AppRadius.Large
+                color = if (query.isBlank()) Color(0xFFE5ECF6) else Color(0xFF7C3AED),
+                shape = RoundedCornerShape(22.dp)
             )
-            .padding(horizontal = AppSpacing.Medium),
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
-            text = "\u641c",
-            color = if (query.isBlank()) AppColors.TextMuted else AppColors.Primary,
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+            text = "\u2315",
+            color = Color(0xFF8EA0B8),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
         )
         HorizontalDivider(
             modifier = Modifier
                 .height(AppSpacing.SearchDividerHeight)
                 .width(AppSpacing.SearchDividerWidth),
-            color = AppColors.MediaPlaceholder
+            color = Color(0xFFE5ECF6)
         )
         BasicTextField(
             value = query,
@@ -536,7 +857,7 @@ private fun SearchBar(
                 if (query.isBlank()) {
                     Text(
                         text = "\u641c\u7d22\u5e7f\u544a\u3001\u54c1\u724c\u3001\u6807\u7b7e",
-                        color = AppColors.TextMuted,
+                        color = Color(0xFF9AA8BB),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -548,7 +869,7 @@ private fun SearchBar(
                 modifier = Modifier
                     .size(AppSpacing.SearchClearButton)
                     .clip(CircleShape)
-                    .background(AppColors.PageBackground)
+                    .background(Color(0xFFF1F5FB))
                     .clickable { onQueryChange("") },
                 contentAlignment = Alignment.Center
             ) {
@@ -607,11 +928,17 @@ private fun AdCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRadius.Large)
-            .background(AppColors.Surface)
+            .shadow(
+                elevation = 10.dp,
+                shape = RoundedCornerShape(26.dp),
+                ambientColor = Color(0x140F2D5C),
+                spotColor = Color(0x140F2D5C)
+            )
+            .clip(RoundedCornerShape(26.dp))
+            .background(Color.White)
             .clickable(onClick = onViewClick)
-            .padding(AppSpacing.Medium),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (ad.type) {
             AdType.SmallImage -> {
@@ -659,13 +986,7 @@ private fun AdCard(
                         .fillMaxWidth()
                         .height(mediaSpec.height)
                 )
-                Text(
-                    text = ad.summary,
-                    color = AppColors.TextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                AiSummaryText(summary = ad.summary)
                 TagRow(
                     tags = ad.tags,
                     selectedTag = selectedTag,
@@ -688,7 +1009,7 @@ private fun AdCard(
                 )
             }
         }
-        AdActionRow(
+        ActionRow(
             liked = liked,
             collected = collected,
             onLikeClick = onLikeClick,
@@ -707,43 +1028,87 @@ private fun AdMediaBlock(
 ) {
     var isVideoPlaying by remember(ad.id) { mutableStateOf(false) }
     var isVideoMuted by remember(ad.id) { mutableStateOf(false) }
+    var isPlayerVisible by remember(ad.id) { mutableStateOf(false) }
+    var playbackPositionMs by remember(ad.id) { mutableStateOf(0L) }
+    val imageLoader = rememberRetryImageLoader(
+        data = mediaUrlFor(ad),
+        cacheKey = mediaCacheKeyFor(ad)
+    )
 
-    Box(
-        modifier = modifier
-            .clip(AppRadius.Medium)
-            .background(mediaSpec.color)
-            .padding(AppSpacing.Medium)
-    ) {
-        Text(
-            text = mediaSpec.labelPrefix + ad.mediaLabel,
-            color = AppColors.OnPrimary,
-            style = MaterialTheme.typography.labelLarge
+    if (ad.type == AdType.Video) {
+        VideoPreview(
+            ad = ad,
+            coverLoader = imageLoader,
+            videoUrl = videoStreamUrlFor(ad),
+            isPlayerVisible = isPlayerVisible,
+            isPlaying = isVideoPlaying,
+            isMuted = isVideoMuted,
+            playbackPositionMs = playbackPositionMs,
+            modifier = modifier,
+            onPlayerVisibleChange = { isPlayerVisible = it },
+            onPlayingChange = { isVideoPlaying = it },
+            onMutedChange = { isVideoMuted = it },
+            onPositionChange = { playbackPositionMs = it }
         )
-        if (mediaSpec.showPlayButton) {
-            VideoPlayButton(
-                isPlaying = isVideoPlaying,
-                onClick = { isVideoPlaying = !isVideoPlaying },
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(AppSpacing.PlayButton)
+    } else {
+        Box(modifier = modifier.clip(RoundedCornerShape(20.dp))) {
+            AsyncAdImage(
+                loader = imageLoader,
+                contentDescription = ad.mediaLabel,
+                modifier = Modifier.fillMaxSize(),
+                accentColor = mediaSpec.color,
+                contentScale = ContentScale.Crop
             )
-            VideoMuteButton(
-                isMuted = isVideoMuted,
-                onClick = { isVideoMuted = !isVideoMuted },
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(AppSpacing.VideoMuteButton)
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.18f))
             )
-        }
-        if (mediaSpec.showChannelBadge) {
             Text(
                 text = channelLabelFor(ad.channel),
-                modifier = Modifier.align(Alignment.BottomStart),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(AppSpacing.Medium),
                 color = AppColors.OnPrimary,
                 style = MaterialTheme.typography.labelLarge
             )
         }
     }
+}
+
+@Composable
+private fun VideoPreview(
+    ad: AdItem,
+    coverLoader: com.example.aiadflow.ui.media.RetryImageLoader,
+    videoUrl: String?,
+    isPlayerVisible: Boolean,
+    isPlaying: Boolean,
+    isMuted: Boolean,
+    playbackPositionMs: Long,
+    modifier: Modifier = Modifier,
+    badgeLabel: String = "Video",
+    showVideoPill: Boolean = false,
+    onPlayerVisibleChange: (Boolean) -> Unit,
+    onPlayingChange: (Boolean) -> Unit,
+    onMutedChange: (Boolean) -> Unit,
+    onPositionChange: (Long) -> Unit
+) {
+    AdVideoPlayerCard(
+        ad = ad,
+        coverLoader = coverLoader,
+        videoUrl = videoUrl,
+        isPlayerVisible = isPlayerVisible,
+        isPlaying = isPlaying,
+        isMuted = isMuted,
+        playbackPositionMs = playbackPositionMs,
+        modifier = modifier,
+        badgeLabel = badgeLabel,
+        showVideoPill = showVideoPill,
+        onPlayerVisibleChange = onPlayerVisibleChange,
+        onPlayingChange = onPlayingChange,
+        onMutedChange = onMutedChange,
+        onPositionChange = onPositionChange
+    )
 }
 
 @Composable
@@ -862,7 +1227,10 @@ private fun AdSummaryContent(
             Text(
                 text = ad.title,
                 color = AppColors.TextPrimary,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold
+                ),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -870,13 +1238,7 @@ private fun AdSummaryContent(
         } else {
             AdSummaryHeader(ad = ad, showChannelInline = showChannelInline)
         }
-        Text(
-            text = ad.summary,
-            color = AppColors.TextSecondary,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        AiSummaryText(summary = ad.summary)
         TagRow(
             tags = ad.tags,
             selectedTag = selectedTag,
@@ -898,8 +1260,8 @@ private fun AdSummaryHeader(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = ad.brandName,
-                color = AppColors.TextSecondary,
-                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF71839A),
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -907,7 +1269,10 @@ private fun AdSummaryHeader(
                 Text(
                     text = ad.title,
                     color = AppColors.TextPrimary,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -916,15 +1281,40 @@ private fun AdSummaryHeader(
         if (showChannelInline) {
             Text(
                 text = channelLabelFor(ad.channel),
+                modifier = Modifier
+                    .clip(AppRadius.Full)
+                    .background(Color(0xFFEFF5FF))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 color = AppColors.Primary,
-                style = MaterialTheme.typography.labelLarge
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
             )
         }
     }
 }
 
 @Composable
-private fun AdActionRow(
+private fun AiSummaryText(summary: String) {
+    Text(
+        text = buildAnnotatedString {
+            withStyle(
+                SpanStyle(
+                    color = AppColors.Primary,
+                    fontWeight = FontWeight.Bold
+                )
+            ) {
+                append("AI 摘要：")
+            }
+            append(summary.removePrefix("AI 摘要：").trimStart())
+        },
+        color = Color(0xFF60738D),
+        style = MaterialTheme.typography.bodyMedium,
+        maxLines = 3,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+@Composable
+private fun ActionRow(
     liked: Boolean,
     collected: Boolean,
     onLikeClick: () -> Unit,
@@ -934,10 +1324,13 @@ private fun AdActionRow(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small)) {
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             ActionChip(
                 text = if (liked) "\u5df2\u70b9\u8d5e" else "\u70b9\u8d5e",
                 selected = liked,
@@ -954,9 +1347,8 @@ private fun AdActionRow(
                 onClick = onShareClick
             )
         }
-        ActionChip(
+        PrimaryActionChip(
             text = "\u67e5\u770b",
-            selected = true,
             onClick = onViewClick
         )
     }
@@ -971,26 +1363,27 @@ private fun TagRow(
 ) {
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Small),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.Small),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         maxLines = 2
     ) {
-        tags.forEach { tag ->
+        tags.forEachIndexed { index, tag ->
             val selected = tag.equals(selectedTag, ignoreCase = true)
             val backgroundColor by animateColorAsState(
-                targetValue = if (selected) AppColors.Primary else AppColors.PageBackground,
+                targetValue = if (selected) AppColors.Primary else TagBackgroundColors[index % TagBackgroundColors.size],
                 label = "tagBackground"
             )
             val borderColor by animateColorAsState(
-                targetValue = if (selected) AppColors.Primary else AppColors.MediaPlaceholder,
+                targetValue = if (selected) AppColors.Primary else Color.Transparent,
                 label = "tagBorder"
             )
             val textColor by animateColorAsState(
-                targetValue = if (selected) AppColors.OnPrimary else AppColors.TextSecondary,
+                targetValue = if (selected) AppColors.OnPrimary else Color(0xFF63758C),
                 label = "tagText"
             )
             Box(
                 modifier = Modifier
+                    .height(30.dp)
                     .clip(AppRadius.Full)
                     .background(backgroundColor)
                     .border(
@@ -1001,9 +1394,9 @@ private fun TagRow(
                     .clickable { onTagClick(tag) }
                     .widthIn(max = AppSpacing.TagMaxWidth)
                     .padding(
-                        horizontal = AppSpacing.Small,
-                        vertical = AppSpacing.TagVertical
-                    )
+                        horizontal = 12.dp
+                    ),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "#$tag",
@@ -1027,17 +1420,39 @@ private fun ActionChip(
 ) {
     Box(
         modifier = Modifier
-            .height(AppSpacing.ActionHeight)
+            .height(38.dp)
             .clip(AppRadius.Full)
-            .background(if (selected) AppColors.Primary else AppColors.PageBackground)
+            .background(if (selected) Color(0xFFEFF5FF) else Color(0xFFF3F6FA))
             .clickable(onClick = onClick)
-            .padding(horizontal = AppSpacing.Medium),
+            .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            color = if (selected) AppColors.OnPrimary else AppColors.TextSecondary,
-            style = MaterialTheme.typography.labelLarge
+            color = if (selected) AppColors.Primary else Color(0xFF66758B),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+        )
+    }
+}
+
+@Composable
+private fun PrimaryActionChip(
+    text: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .height(38.dp)
+            .clip(AppRadius.Full)
+            .background(PrimaryGradientBrush)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = Color.White,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
         )
     }
 }
@@ -1141,6 +1556,8 @@ private fun HomeScreenPreview() {
         var selectedTag by remember { mutableStateOf<String?>(null) }
         var showCollectedOnly by remember { mutableStateOf(false) }
         var selectedAd by remember { mutableStateOf<AdItem?>(null) }
+        var conversationDraft by remember { mutableStateOf("") }
+        var conversationMessages by remember { mutableStateOf<List<ConversationSearchMessage>>(emptyList()) }
         val likedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
         val collectedOverrides = remember { mutableStateMapOf<Long, Boolean>() }
         val visibleAds = PreviewAds
@@ -1177,7 +1594,12 @@ private fun HomeScreenPreview() {
             if (ad != null) {
                 AdDetailScreen(
                     ad = ad,
-                    onBackClick = { selectedAd = null }
+                    liked = likedOverrides[ad.id] ?: ad.liked,
+                    collected = collectedOverrides[ad.id] ?: ad.collected,
+                    onBackClick = { selectedAd = null },
+                    onLikeClick = { likedOverrides[ad.id] = !(likedOverrides[ad.id] ?: ad.liked) },
+                    onCollectClick = { collectedOverrides[ad.id] = !(collectedOverrides[ad.id] ?: ad.collected) },
+                    onShareClick = {}
                 )
             } else {
                 HomeScreen(
@@ -1193,10 +1615,33 @@ private fun HomeScreenPreview() {
                         collectedCount = PreviewAds.count { ad -> collectedOverrides[ad.id] ?: ad.collected },
                         isLoadingMore = false,
                         hasMoreAds = false,
-                        loadMoreErrorMessage = null
+                        loadMoreErrorMessage = null,
+                        conversationDraft = conversationDraft,
+                        conversationMessages = conversationMessages,
+                        aiSearchResultCount = visibleAds.size
                     ),
                     onChannelSelected = { selectedChannel = it },
                     onSearchChange = { searchText = it },
+                    onConversationDraftChange = { conversationDraft = it },
+                    onConversationSubmit = {
+                        val query = conversationDraft.trim()
+                        if (query.isNotBlank()) {
+                            searchText = query
+                            conversationMessages = conversationMessages + listOf(
+                                ConversationSearchMessage(1L + conversationMessages.size, query, true),
+                                ConversationSearchMessage(
+                                    2L + conversationMessages.size,
+                                    "已按“$query”为你筛选首页广告。",
+                                    false
+                                )
+                            )
+                            conversationDraft = ""
+                        }
+                    },
+                    onConversationClear = {
+                        conversationDraft = ""
+                        conversationMessages = emptyList()
+                    },
                     onTagSelected = { tag ->
                         selectedTag = tag
                             ?.trim()
@@ -1246,7 +1691,12 @@ private fun AdDetailScreenPreview() {
     AIAdFlowTheme {
         AdDetailScreen(
             ad = PreviewAds.first(),
-            onBackClick = {}
+            liked = false,
+            collected = false,
+            onBackClick = {},
+            onLikeClick = {},
+            onCollectClick = {},
+            onShareClick = {}
         )
     }
 }
@@ -1254,18 +1704,24 @@ private fun AdDetailScreenPreview() {
 @Composable
 private fun AdDetailScreen(
     ad: AdItem,
-    onBackClick: () -> Unit
+    liked: Boolean,
+    collected: Boolean,
+    onBackClick: () -> Unit,
+    onLikeClick: () -> Unit,
+    onCollectClick: () -> Unit,
+    onShareClick: () -> Unit
 ) {
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = AppColors.PageBackground
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(HomeBackgroundBrush)
     ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = AppSpacing.PageHorizontal),
-            contentPadding = PaddingValues(bottom = AppSpacing.Section),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)
+                .padding(horizontal = 20.dp),
+            contentPadding = PaddingValues(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             item {
                 Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
@@ -1274,11 +1730,17 @@ private fun AdDetailScreen(
                 DetailTopBar(onBackClick = onBackClick)
             }
             item {
-                when (ad.type) {
-                    AdType.ImageText -> ImageTextDetailContent(ad = ad)
-                    AdType.Video -> VideoDetailContent(ad = ad)
-                    else -> StandardDetailContent(ad = ad)
-                }
+                DetailVideoCard(ad = ad)
+            }
+            item {
+                DetailInfoCard(
+                    ad = ad,
+                    liked = liked,
+                    collected = collected,
+                    onLikeClick = onLikeClick,
+                    onCollectClick = onCollectClick,
+                    onShareClick = onShareClick
+                )
             }
         }
     }
@@ -1301,273 +1763,302 @@ private fun AdFeedRefreshContainer(
 }
 
 @Composable
-private fun StandardDetailContent(ad: AdItem) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)) {
-        DetailMediaBlock(ad = ad, height = AppSpacing.AdMediaHeight)
-        DetailField(label = "\u54c1\u724c\u540d", value = ad.brandName)
-        DetailField(label = "\u6807\u9898", value = ad.title)
-        DetailField(label = "\u0041\u0049 \u6458\u8981", value = ad.summary)
-        DetailField(
-            label = "\u5e7f\u544a\u6807\u7b7e",
-            value = ad.tags.joinToString(separator = "  ") { "#$it" }
-        )
-    }
-}
-
-@Composable
-private fun ImageTextDetailContent(ad: AdItem) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)) {
-        DetailMediaBlock(ad = ad, height = AppSpacing.ImageTextMediaHeight)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(AppRadius.Large)
-                .background(AppColors.Surface)
-                .padding(AppSpacing.Medium),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
-        ) {
-            Text(
-                text = ad.brandName,
-                color = AppColors.TextSecondary,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                text = ad.title,
-                color = AppColors.TextPrimary,
-                style = MaterialTheme.typography.titleMedium
-            )
-            Text(
-                text = "\u0041\u0049 \u6458\u8981",
-                color = AppColors.Primary,
-                style = MaterialTheme.typography.labelLarge
-            )
-            Text(
-                text = ad.summary,
-                color = AppColors.TextSecondary,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                text = ad.tags.joinToString(separator = "  ") { "#$it" },
-                color = AppColors.TextSecondary,
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
-            )
-        }
-    }
-}
-
-@Composable
-private fun VideoDetailContent(ad: AdItem) {
-    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Section)) {
-        VideoPlayerArea(ad = ad)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(AppRadius.Large)
-                .background(AppColors.Surface)
-                .padding(AppSpacing.Medium),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = ad.brandName,
-                        color = AppColors.TextSecondary,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = ad.title,
-                        color = AppColors.TextPrimary,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                }
-                Text(
-                    text = channelLabelFor(ad.channel),
-                    color = AppColors.Primary,
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
-            Text(
-                text = "\u89c6\u9891\u7d20\u6750",
-                color = AppColors.Primary,
-                style = MaterialTheme.typography.labelLarge
-            )
-            Text(
-                text = ad.videoUrl ?: "\u672c\u5730 mock \u89c6\u9891",
-                color = AppColors.TextSecondary,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                text = "\u0041\u0049 \u6458\u8981",
-                color = AppColors.Primary,
-                style = MaterialTheme.typography.labelLarge
-            )
-            Text(
-                text = ad.summary,
-                color = AppColors.TextSecondary,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                text = ad.tags.joinToString(separator = "  ") { "#$it" },
-                color = AppColors.TextSecondary,
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium)
-            )
-        }
-    }
-}
-
-@Composable
-private fun VideoPlayerArea(ad: AdItem) {
-    var isPlaying by remember(ad.id) { mutableStateOf(false) }
-    var isMuted by remember(ad.id) { mutableStateOf(false) }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(AppSpacing.VideoMediaHeight)
-            .clip(AppRadius.Large)
-            .background(mediaColorFor(ad.type))
-            .padding(AppSpacing.Medium)
-    ) {
-        Text(
-            text = ad.mediaLabel,
-            color = AppColors.OnPrimary,
-            style = MaterialTheme.typography.labelLarge
-        )
-        VideoPlayButton(
-            isPlaying = isPlaying,
-            onClick = { isPlaying = !isPlaying },
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(AppSpacing.PlayButton)
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .padding(end = AppSpacing.VideoMuteButton + AppSpacing.Small),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(AppSpacing.VideoProgressHeight)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.35f))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.42f)
-                        .height(AppSpacing.VideoProgressHeight)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.9f))
-                )
-            }
-            Text(
-                text = if (isPlaying) "00:12 / 00:30" else "00:00 / 00:30",
-                color = AppColors.OnPrimary,
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
-        VideoMuteButton(
-            isMuted = isMuted,
-            onClick = { isMuted = !isMuted },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .size(AppSpacing.VideoMuteButton)
-        )
-    }
-}
-
-@Composable
-private fun DetailMediaBlock(
-    ad: AdItem,
-    height: Dp
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(height)
-            .clip(AppRadius.Large)
-            .background(mediaColorFor(ad.type))
-            .padding(AppSpacing.Medium)
-    ) {
-        Text(
-            text = ad.mediaLabel,
-            color = AppColors.OnPrimary,
-            style = MaterialTheme.typography.labelLarge
-        )
-        if (ad.type == AdType.Video) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(AppSpacing.PlayButton)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.9f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "\u64ad\u653e",
-                    color = AppColors.Primary,
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
-        }
-        Text(
-            text = channelLabelFor(ad.channel),
-            modifier = Modifier.align(Alignment.BottomStart),
-            color = AppColors.OnPrimary,
-            style = MaterialTheme.typography.labelLarge
-        )
-    }
-}
-
-@Composable
 private fun DetailTopBar(onBackClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(AppSpacing.HeaderHeight),
+            .height(76.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Medium)
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        ActionChip(
-            text = "\u8fd4\u56de",
-            selected = false,
-            onClick = onBackClick
-        )
+        Box(
+            modifier = Modifier
+                .height(40.dp)
+                .shadow(
+                    elevation = 8.dp,
+                    shape = AppRadius.Full,
+                    ambientColor = Color(0x120F2D5C),
+                    spotColor = Color(0x120F2D5C)
+                )
+                .clip(AppRadius.Full)
+                .background(Color.White)
+                .clickable(onClick = onBackClick)
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "\u8fd4\u56de",
+                color = Color(0xFF60738D),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+            )
+        }
         Text(
             text = "\u5e7f\u544a\u8be6\u60c5",
-            color = AppColors.TextPrimary,
-            style = MaterialTheme.typography.headlineMedium
+            color = Color(0xFF102033),
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
         )
     }
 }
 
 @Composable
-private fun DetailField(
-    label: String,
-    value: String
+private fun DetailVideoCard(ad: AdItem) {
+    val mediaSpec = mediaSpecFor(ad.type)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(if (ad.type == AdType.Video) 220.dp else mediaSpec.height)
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(26.dp),
+                ambientColor = Color(0x180F2D5C),
+                spotColor = Color(0x180F2D5C)
+            )
+            .clip(RoundedCornerShape(26.dp))
+    ) {
+        if (ad.type == AdType.Video) {
+            var isVideoPlaying by remember(ad.id) { mutableStateOf(false) }
+            var isVideoMuted by remember(ad.id) { mutableStateOf(false) }
+            var isPlayerVisible by remember(ad.id) { mutableStateOf(false) }
+            var playbackPositionMs by remember(ad.id) { mutableStateOf(0L) }
+            val imageLoader = rememberRetryImageLoader(
+                data = mediaUrlFor(ad),
+                cacheKey = mediaCacheKeyFor(ad)
+            )
+            VideoPreview(
+                ad = ad,
+                coverLoader = imageLoader,
+                videoUrl = videoStreamUrlFor(ad),
+                isPlayerVisible = isPlayerVisible,
+                isPlaying = isVideoPlaying,
+                isMuted = isVideoMuted,
+                playbackPositionMs = playbackPositionMs,
+                modifier = Modifier.fillMaxSize(),
+                badgeLabel = "视频素材",
+                showVideoPill = true,
+                onPlayerVisibleChange = { isPlayerVisible = it },
+                onPlayingChange = { isVideoPlaying = it },
+                onMutedChange = { isVideoMuted = it },
+                onPositionChange = { playbackPositionMs = it }
+            )
+        } else {
+            AdMediaBlock(
+                ad = ad,
+                mediaSpec = mediaSpec,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailInfoCard(
+    ad: AdItem,
+    liked: Boolean,
+    collected: Boolean,
+    onLikeClick: () -> Unit,
+    onCollectClick: () -> Unit,
+    onShareClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRadius.Large)
-            .background(AppColors.Surface)
-            .padding(AppSpacing.Medium),
-        verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(26.dp),
+                ambientColor = Color(0x140F2D5C),
+                spotColor = Color(0x140F2D5C)
+            )
+            .clip(RoundedCornerShape(26.dp))
+            .background(Color.White)
+            .padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = ad.brandName,
+                    color = Color(0xFF71839A),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                )
+                Text(
+                    text = ad.title,
+                    color = Color(0xFF102033),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 22.sp,
+                        lineHeight = 28.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            DetailChannelPill(channel = ad.channel)
+        }
+        DetailMediaInfoBlock(ad = ad)
+        DetailSummarySection(summary = ad.summary)
+        DetailTagRow(tags = ad.tags)
+        DetailActionRow(
+            liked = liked,
+            collected = collected,
+            onLikeClick = onLikeClick,
+            onCollectClick = onCollectClick,
+            onShareClick = onShareClick
+        )
+    }
+}
+
+@Composable
+private fun DetailChannelPill(channel: Channel) {
+    Text(
+        text = channelLabelFor(channel),
+        modifier = Modifier
+            .clip(AppRadius.Full)
+            .background(Color(0xFFEFF5FF))
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        color = AppColors.Primary,
+        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+    )
+}
+
+@Composable
+private fun DetailMediaInfoBlock(ad: AdItem) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xFFF3F7FC))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
-            text = label,
+            text = ad.mediaLabel,
             color = AppColors.Primary,
-            style = MaterialTheme.typography.labelLarge
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
         )
         Text(
-            text = value,
-            color = AppColors.TextPrimary,
-            style = MaterialTheme.typography.bodyMedium
+            text = if (ad.type == AdType.Video) {
+                ad.videoUrl ?: "本地视频素材"
+            } else {
+                ad.coverUrl ?: "本地图片素材"
+            },
+            color = Color(0xFF60738D),
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun DetailSummarySection(summary: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .height(18.dp)
+                    .clip(AppRadius.Full)
+                    .background(PrimaryGradientBrush)
+            )
+            Text(
+                text = "AI 摘要",
+                color = Color(0xFF102033),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+            )
+        }
+        Text(
+            text = summary.removePrefix("AI 摘要：").trimStart(),
+            color = Color(0xFF60738D),
+            style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DetailTagRow(tags: List<String>) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        tags.forEachIndexed { index, tag ->
+            Box(
+                modifier = Modifier
+                    .height(30.dp)
+                    .clip(AppRadius.Full)
+                    .background(TagBackgroundColors[index % TagBackgroundColors.size])
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "#$tag",
+                    color = Color(0xFF63758C),
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailActionRow(
+    liked: Boolean,
+    collected: Boolean,
+    onLikeClick: () -> Unit,
+    onCollectClick: () -> Unit,
+    onShareClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        DetailActionChip(
+            text = if (liked) "已点赞" else "点赞",
+            selected = liked,
+            onClick = onLikeClick
+        )
+        DetailActionChip(
+            text = if (collected) "已收藏" else "收藏",
+            selected = collected,
+            onClick = onCollectClick
+        )
+        DetailActionChip(
+            text = "分享",
+            selected = false,
+            onClick = onShareClick
+        )
+    }
+}
+
+@Composable
+private fun DetailActionChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .height(38.dp)
+            .clip(AppRadius.Full)
+            .background(if (selected) PrimaryGradientBrush else Brush.linearGradient(listOf(Color(0xFFF3F6FA), Color(0xFFF3F6FA))))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = if (selected) Color.White else Color(0xFF66758B),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
         )
     }
 }

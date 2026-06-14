@@ -49,7 +49,15 @@ data class AdFeedUiState(
     val isLoadingMore: Boolean = false,
     val hasMoreAds: Boolean = true,
     val loadMoreErrorMessage: String? = null,
-    val currentPage: Int = 1
+    val currentPage: Int = 1,
+    val conversationDraft: String = "",
+    val conversationMessages: List<ConversationSearchMessage> = emptyList()
+)
+
+data class ConversationSearchMessage(
+    val id: Long,
+    val text: String,
+    val isUser: Boolean
 )
 
 class AdFeedViewModel(
@@ -65,6 +73,7 @@ class AdFeedViewModel(
     private val summaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val tagScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var searchJob: Job? = null
+    private var conversationMessageId = 0L
 
     private val _uiState = MutableStateFlow(
         run {
@@ -123,29 +132,69 @@ class AdFeedViewModel(
 
     fun updateSearchText(text: String) {
         searchJob?.cancel()
-        if (text.trim().isBlank()) {
-            applySearch(text, force = true)
-            return
-        }
-
-        _uiState.update { current ->
-            current.copy(
-                searchText = text,
-                isAiSearchUnderstanding = true,
-                isLoadingMore = false,
-                loadMoreErrorMessage = null
-            )
-        }
+        applySearch(text, force = true)
 
         searchJob = viewModelScope.launch {
             delay(SearchUnderstandingDelayMillis)
-            applySearch(text)
+            _uiState.update { current ->
+                if (current.searchText == text) {
+                    current.copy(isAiSearchUnderstanding = false)
+                } else {
+                    current
+                }
+            }
         }
     }
 
     fun submitSearch() {
         searchJob?.cancel()
         applySearch(_uiState.value.searchText)
+    }
+
+    fun updateConversationDraft(text: String) {
+        _uiState.update { it.copy(conversationDraft = text) }
+    }
+
+    fun submitConversationalSearch() {
+        val query = _uiState.value.conversationDraft.trim()
+        if (query.isBlank()) {
+            return
+        }
+
+        searchJob?.cancel()
+        _uiState.update { current ->
+            val page = current.buildSearchPage(query = query)
+            val resetState = current.pageReset(
+                page = page,
+                searchText = query,
+                isAiSearchUnderstanding = false
+            )
+            resetState.copy(
+                conversationDraft = "",
+                conversationMessages = current.conversationMessages + listOf(
+                    ConversationSearchMessage(
+                        id = nextConversationMessageId(),
+                        text = query,
+                        isUser = true
+                    ),
+                    ConversationSearchMessage(
+                        id = nextConversationMessageId(),
+                        text = buildConversationSearchReply(query, page),
+                        isUser = false
+                    )
+                )
+            )
+        }
+        ensureAiFields(_uiState.value.ads)
+    }
+
+    fun clearConversation() {
+        _uiState.update {
+            it.copy(
+                conversationDraft = "",
+                conversationMessages = emptyList()
+            )
+        }
     }
 
     private fun applySearch(query: String, force: Boolean = false) {
@@ -605,6 +654,35 @@ class AdFeedViewModel(
 
     private fun Int.adjustCount(selected: Boolean): Int {
         return (this + if (selected) 1 else -1).coerceAtLeast(0)
+    }
+
+    private fun nextConversationMessageId(): Long {
+        conversationMessageId += 1
+        return conversationMessageId
+    }
+
+    private fun buildConversationSearchReply(query: String, page: SearchPage): String {
+        if (page.totalCount == 0) {
+            return "没有找到和“$query”匹配的广告。可以换成品牌、场景、品类或标签再试一次。"
+        }
+
+        val intent = page.interpretation.takeIf { it.isNotBlank() } ?: query
+        val tags = page.suggestedTags
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString(separator = " ") { "#$it" }
+
+        return buildString {
+            append("已按“")
+            append(intent)
+            append("”为你筛出 ")
+            append(page.totalCount)
+            append(" 条广告。")
+            if (tags != null) {
+                append(" 推荐关注 ")
+                append(tags)
+                append("。")
+            }
+        }
     }
 
     private data class SearchPage(
