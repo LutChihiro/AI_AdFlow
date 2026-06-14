@@ -11,7 +11,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AdFeedViewModelTest {
-    @Test
     fun switchChannelFiltersAdsWithCurrentSearchText() {
         val viewModel = AdFeedViewModel()
 
@@ -87,6 +86,16 @@ class AdFeedViewModelTest {
         assertTrue(state.ads.all { ad ->
             ad.tags.any { it.equals("Local", ignoreCase = true) }
         })
+    }
+
+    @Test
+    fun updateSearchTextReturnsEmptyAdsWhenNoAdsMatch() {
+        val viewModel = AdFeedViewModel()
+
+        viewModel.updateSearchText("no matching campaign")
+
+        val state = viewModel.uiState.value
+        assertTrue(state.ads.isEmpty())
     }
 
     @Test
@@ -254,22 +263,26 @@ class AdFeedViewModelTest {
     fun toggleLikeLikesUnlikedAd() {
         val viewModel = AdFeedViewModel()
         val ad = viewModel.uiState.value.ads.first { !it.liked }
+        val initialCount = viewModel.uiState.value.likeCountsByAdId[ad.id] ?: ad.likeCount
 
         viewModel.toggleLike(ad.id)
 
         val state = viewModel.uiState.value
         assertEquals(true, state.likedOverridesByAdId[ad.id])
+        assertEquals(initialCount + 1, state.likeCountsByAdId[ad.id])
     }
 
     @Test
     fun toggleLikeUnlikesInitiallyLikedAd() {
         val viewModel = AdFeedViewModel()
         val ad = viewModel.uiState.value.ads.first { it.liked }
+        val initialCount = viewModel.uiState.value.likeCountsByAdId[ad.id] ?: ad.likeCount
 
         viewModel.toggleLike(ad.id)
 
         val state = viewModel.uiState.value
         assertEquals(false, state.likedOverridesByAdId[ad.id])
+        assertEquals((initialCount - 1).coerceAtLeast(0), state.likeCountsByAdId[ad.id])
     }
 
     @Test
@@ -297,11 +310,13 @@ class AdFeedViewModelTest {
     fun toggleCollectCollectsUncollectedAd() {
         val viewModel = AdFeedViewModel()
         val ad = viewModel.uiState.value.ads.first { !it.collected }
+        val initialCount = viewModel.uiState.value.collectCountsByAdId[ad.id] ?: ad.collectCount
 
         viewModel.toggleCollect(ad.id)
 
         val state = viewModel.uiState.value
         assertEquals(true, state.collectedOverridesByAdId[ad.id])
+        assertEquals(initialCount + 1, state.collectCountsByAdId[ad.id])
     }
 
     @Test

@@ -38,12 +38,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -64,18 +62,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.Dp
 import com.example.aiadflow.data.local.SharedPreferencesAdLocalStateStore
 import com.example.aiadflow.data.model.AdItem
@@ -87,9 +82,6 @@ import com.example.aiadflow.ui.theme.AIAdFlowTheme
 import com.example.aiadflow.ui.theme.AppColors
 import com.example.aiadflow.ui.theme.AppRadius
 import com.example.aiadflow.ui.theme.AppSpacing
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -107,9 +99,6 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 val uiState by viewModel.uiState.collectAsState()
-                val feedListState = rememberSaveable(saver = LazyListState.Saver) {
-                    LazyListState()
-                }
                 var selectedAd by remember { mutableStateOf<AdItem?>(null) }
 
                 AnimatedContent(
@@ -129,7 +118,6 @@ class MainActivity : ComponentActivity() {
                     if (detailAd == null) {
                         HomeScreen(
                             uiState = uiState,
-                            listState = feedListState,
                             onChannelSelected = viewModel::switchChannel,
                             onSearchChange = viewModel::updateSearchText,
                             onTagSelected = viewModel::selectTag,
@@ -173,7 +161,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun HomeScreen(
     uiState: AdFeedUiState,
-    listState: LazyListState = rememberLazyListState(),
     onChannelSelected: (Channel?) -> Unit,
     onSearchChange: (String) -> Unit,
     onTagSelected: (String?) -> Unit,
@@ -187,6 +174,7 @@ private fun HomeScreen(
     onShareClick: (Long) -> Unit,
     onAdClick: (Long) -> Unit
 ) {
+    val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val shouldLoadMore by remember(uiState.hasMoreAds, uiState.isLoadingMore, uiState.ads.size) {
@@ -717,15 +705,8 @@ private fun AdMediaBlock(
     mediaSpec: AdMediaSpec,
     modifier: Modifier = Modifier
 ) {
-    if (mediaSpec.showPlayButton) {
-        Media3VideoBlock(
-            ad = ad,
-            modifier = modifier,
-            shape = AppRadius.Medium,
-            showChannelBadge = false
-        )
-        return
-    }
+    var isVideoPlaying by remember(ad.id) { mutableStateOf(false) }
+    var isVideoMuted by remember(ad.id) { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -738,90 +719,26 @@ private fun AdMediaBlock(
             color = AppColors.OnPrimary,
             style = MaterialTheme.typography.labelLarge
         )
+        if (mediaSpec.showPlayButton) {
+            VideoPlayButton(
+                isPlaying = isVideoPlaying,
+                onClick = { isVideoPlaying = !isVideoPlaying },
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(AppSpacing.PlayButton)
+            )
+            VideoMuteButton(
+                isMuted = isVideoMuted,
+                onClick = { isVideoMuted = !isVideoMuted },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(AppSpacing.VideoMuteButton)
+            )
+        }
         if (mediaSpec.showChannelBadge) {
             Text(
                 text = channelLabelFor(ad.channel),
                 modifier = Modifier.align(Alignment.BottomStart),
-                color = AppColors.OnPrimary,
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
-    }
-}
-
-@Composable
-private fun Media3VideoBlock(
-    ad: AdItem,
-    modifier: Modifier = Modifier,
-    shape: androidx.compose.ui.graphics.Shape = AppRadius.Medium,
-    showChannelBadge: Boolean = false
-) {
-    val videoUrl = ad.videoUrl
-    if (videoUrl.isNullOrBlank()) {
-        Box(
-            modifier = modifier
-                .clip(shape)
-                .background(mediaColorFor(ad.type))
-                .padding(AppSpacing.Medium)
-        ) {
-            Text(
-                text = ad.mediaLabel,
-                color = AppColors.OnPrimary,
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
-        return
-    }
-
-    val context = LocalContext.current
-    val player = remember(videoUrl) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(videoUrl))
-            playWhenReady = false
-            prepare()
-        }
-    }
-
-    DisposableEffect(player) {
-        onDispose {
-            player.release()
-        }
-    }
-
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(Color.Black)
-    ) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { viewContext ->
-                PlayerView(viewContext).apply {
-                    this.player = player
-                    useController = true
-                    setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                }
-            },
-            update = { playerView ->
-                playerView.player = player
-            }
-        )
-        Text(
-            text = ad.mediaLabel,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .background(Color.Black.copy(alpha = 0.42f))
-                .padding(horizontal = AppSpacing.Small, vertical = AppSpacing.TagVertical),
-            color = AppColors.OnPrimary,
-            style = MaterialTheme.typography.labelLarge
-        )
-        if (showChannelBadge) {
-            Text(
-                text = channelLabelFor(ad.channel),
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .background(Color.Black.copy(alpha = 0.42f))
-                    .padding(horizontal = AppSpacing.Small, vertical = AppSpacing.TagVertical),
                 color = AppColors.OnPrimary,
                 style = MaterialTheme.typography.labelLarge
             )
@@ -1503,14 +1420,65 @@ private fun VideoDetailContent(ad: AdItem) {
 
 @Composable
 private fun VideoPlayerArea(ad: AdItem) {
-    Media3VideoBlock(
-        ad = ad,
+    var isPlaying by remember(ad.id) { mutableStateOf(false) }
+    var isMuted by remember(ad.id) { mutableStateOf(false) }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(AppSpacing.VideoMediaHeight),
-        shape = AppRadius.Large,
-        showChannelBadge = true
-    )
+            .height(AppSpacing.VideoMediaHeight)
+            .clip(AppRadius.Large)
+            .background(mediaColorFor(ad.type))
+            .padding(AppSpacing.Medium)
+    ) {
+        Text(
+            text = ad.mediaLabel,
+            color = AppColors.OnPrimary,
+            style = MaterialTheme.typography.labelLarge
+        )
+        VideoPlayButton(
+            isPlaying = isPlaying,
+            onClick = { isPlaying = !isPlaying },
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(AppSpacing.PlayButton)
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .padding(end = AppSpacing.VideoMuteButton + AppSpacing.Small),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Small)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(AppSpacing.VideoProgressHeight)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.35f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.42f)
+                        .height(AppSpacing.VideoProgressHeight)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.9f))
+                )
+            }
+            Text(
+                text = if (isPlaying) "00:12 / 00:30" else "00:00 / 00:30",
+                color = AppColors.OnPrimary,
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+        VideoMuteButton(
+            isMuted = isMuted,
+            onClick = { isMuted = !isMuted },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .size(AppSpacing.VideoMuteButton)
+        )
+    }
 }
 
 @Composable
