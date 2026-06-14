@@ -11,14 +11,19 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.tooling.preview.Preview
 import com.example.aiadflow.data.local.SharedPreferencesAdLocalStateStore
+import com.example.aiadflow.data.mock.MockAdProvider
 import com.example.aiadflow.data.model.AdItem
+import com.example.aiadflow.data.model.Channel
 import com.example.aiadflow.ui.detail.AdDetailScreen
+import com.example.aiadflow.ui.feed.AdFeedUiState
 import com.example.aiadflow.ui.feed.AdFeedViewModel
 import com.example.aiadflow.ui.home.HomeScreen
 import com.example.aiadflow.ui.theme.AIAdFlowTheme
@@ -95,5 +100,59 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+}
+
+@Preview(
+    name = "Home feed",
+    showBackground = true,
+    widthDp = 390,
+    heightDp = 844
+)
+@Composable
+private fun HomeScreenPreview() {
+    val previewAds = MockAdProvider.ads()
+    AIAdFlowTheme {
+        HomeScreen(
+            uiState = AdFeedUiState(
+                channels = Channel.entries,
+                ads = previewAds.take(6),
+                hasMoreAds = previewAds.size > 6,
+                aiSearchResultCount = previewAds.size
+            ),
+            onChannelSelected = {},
+            onSearchChange = {},
+            onTagSelected = {},
+            onClearFilters = {},
+            onRefresh = { true },
+            onLoadMore = {},
+            onRetryLoadMore = {},
+            onLikeClick = {},
+            onCollectClick = {},
+            onShareClick = {},
+            onAdClick = {}
+        )
+    }
+}
+
+@Preview(
+    name = "Ad detail",
+    showBackground = true,
+    widthDp = 390,
+    heightDp = 844
+)
+@Composable
+private fun AdDetailScreenPreview() {
+    val previewAd = MockAdProvider.ads().first()
+    AIAdFlowTheme {
+        AdDetailScreen(
+            ad = previewAd,
+            liked = previewAd.liked,
+            collected = previewAd.collected,
+            onBackClick = {},
+            onLikeClick = {},
+            onCollectClick = {},
+            onShareClick = {}
+        )
     }
 }
