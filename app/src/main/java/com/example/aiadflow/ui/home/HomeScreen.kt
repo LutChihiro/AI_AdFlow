@@ -179,8 +179,13 @@ internal fun HomeScreen(
                             items = uiState.ads,
                             key = { it.id }
                         ) { ad ->
+                            val displayAd = ad.copy(
+                                summary = uiState.adAiSummariesByAdId[ad.id]
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?: ad.summary
+                            )
                             AdCard(
-                                ad = ad,
+                                ad = displayAd,
                                 liked = uiState.likedOverridesByAdId[ad.id] ?: ad.liked,
                                 collected = uiState.collectedOverridesByAdId[ad.id] ?: ad.collected,
                                 selectedTag = uiState.selectedTag,

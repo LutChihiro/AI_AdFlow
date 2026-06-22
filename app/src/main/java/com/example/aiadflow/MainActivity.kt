@@ -87,8 +87,13 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     } else {
+                        val displayDetailAd = detailAd.copy(
+                            summary = uiState.adAiSummariesByAdId[detailAd.id]
+                                ?.takeIf { it.isNotBlank() }
+                                ?: detailAd.summary
+                        )
                         AdDetailScreen(
-                            ad = detailAd,
+                            ad = displayDetailAd,
                             liked = uiState.likedOverridesByAdId[detailAd.id] ?: detailAd.liked,
                             collected = uiState.collectedOverridesByAdId[detailAd.id] ?: detailAd.collected,
                             onBackClick = { selectedAd = null },
